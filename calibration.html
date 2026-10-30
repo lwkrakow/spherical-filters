@@ -3,598 +3,258 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>Viewpoint Noise Calibration & Tangent Analysis</title>
-  <script src="https://www.gstatic.com/antigravity/web/dev/tailwindcss.min.js"></script>
-  <style>
-    canvas { touch-action: none; cursor: grab; }
-    canvas:active { cursor: grabbing; }
-    input[type=range] { accent-color: #38bdf8; }
-    pre { background: #090d16; border: 1px solid #1e293b; border-radius: 0.5rem; overflow-x: auto; }
-    code { font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace; }
-  </style>
+  <meta name="description" content="Use exact simulated geometry to learn appearance sensitivity, then connect real pose uncertainty to selective trust in the tracker.">
+  <title>Learning which features to trust · Spherical Filters</title>
+  <link rel="stylesheet" href="styles.css">
+  <script src="labs.js" defer></script>
 </head>
-<body class="bg-[#0b0f19] text-slate-200 antialiased font-sans leading-relaxed">
+<body>
+<main>
+  <nav aria-label="Tutorial pages"><a href="index.html">Overview & research path</a><a href="fundamentals.html">1 · Filtering fundamentals</a><a href="calibration.html" aria-current="page">2 · Learning uncertainty</a></nav>
+  <header>
+    <span class="eyebrow">Module 02 · From known geometry to useful uncertainty</span>
+    <h1>Learning which features to trust</h1>
+    <p class="lede">Use exact simulated geometry to learn appearance sensitivity, then connect real pose uncertainty to selective trust in the tracker.</p>
+  </header>
 
-  <!-- Main Container -->
-  <div class="max-w-5xl mx-auto px-4 py-8 space-y-10">
 
-    <!-- Top Navigation Tabs -->
-    <nav class="flex flex-wrap items-center gap-2 border-b border-slate-800 pb-4">
-      <a href="index.html" class="px-3.5 py-1.5 rounded-lg text-xs font-mono font-medium text-slate-400 hover:text-white hover:bg-slate-900 border border-transparent transition">
-        &larr; Overview &amp; Strategy
-      </a>
-      <a href="fundamentals.html" class="px-3.5 py-1.5 rounded-lg text-xs font-mono font-medium text-slate-400 hover:text-white hover:bg-slate-900 border border-transparent transition">
-        Module 01: Filtering Fundamentals &amp; 3D Labs
-      </a>
-      <a href="calibration.html" class="px-3.5 py-1.5 rounded-lg text-xs font-mono font-bold bg-cyan-950/80 text-cyan-300 border border-cyan-800/80 shadow-sm">
-        Module 02: Noise Calibration &amp; Tangent PLS (Active)
-      </a>
-    </nav>
+<section class="callout green" aria-labelledby="objective">
+  <h2 id="objective">The same vehicle can look different. How much difference should we expect?</h2>
+  <p>Imagine circling a parked vehicle. Its identity stays the same, but its image and embedding change. Some combinations of features change much more than others. We want the tracker to say: <strong>“We expected disagreement in these directions; use the more stable evidence more strongly.”</strong></p>
+  <p><strong>Calibration</strong> means learning those directions and the amount of tolerance they need. Our simulated dataset gives us an unusually useful starting point: the camera and target geometry that generated each image is known exactly.</p>
+</section>
 
-    <!-- Document Header -->
-    <header class="space-y-3">
-      <div class="inline-flex items-center gap-2 px-2.5 py-1 rounded-full text-xs font-mono font-medium bg-amber-950/70 text-amber-400 border border-amber-800/80">
-        Research Engineering Guide &bull; Module 02
-      </div>
-      <h1 class="text-3xl md:text-4xl font-extrabold text-white tracking-tight">
-        Calibrating Viewpoint Observation Noise in 128D
-      </h1>
-      <p class="text-slate-400 text-base md:text-lg max-w-3xl">
-        Bridging synthetic vehicle datasets and UAS flight telemetry to physical covariance matrices <code class="text-emerald-400">R<sub>t</sub></code> in the Riemannian EKF: contrasting <strong>Within-Class Tangent PCA</strong> and <strong>Tangent Partial Least Squares (T-PLS)</strong>.
-      </p>
-    </header>
-
-    <!-- Executive Overview Card -->
-    <section class="bg-slate-900/60 border border-slate-800 rounded-xl p-5 space-y-3 text-sm text-slate-300">
-      <h2 class="text-xs font-mono uppercase tracking-wider text-cyan-400">The Calibration Objective</h2>
-      <p>
-        In an aerial tracking pipeline, a UAS observes a target vehicle from variable azimuths <code class="text-amber-400">&phi;</code> and elevations <code class="text-amber-400">&theta;</code>. Deep visual embeddings (e.g. 128D) lie on the unit hypersphere <code class="text-cyan-300">S<sup>127</sup></code>.
-      </p>
-      <p>
-        Standard Kalman filters require an observation noise covariance matrix <code class="text-emerald-400">R<sub>t</sub></code>. In 128D space, naive isotropic noise forces all dimensions to expand, discarding vehicle identity. To prevent false track loss, we must discover the <strong>2D viewpoint sensitivity subspace</strong> on the tangent plane <code class="text-cyan-300">T<sub>&mu;</sub>S<sup>127</sup></code> and scale its eigenvalues by physical UAS camera telemetry errors.
-      </p>
-    </section>
-
-    <!-- SECTION 1: The Exact Mathematical Bridge to R_t -->
-    <section class="space-y-4">
-      <div class="flex items-center gap-2">
-        <span class="text-xs font-mono text-cyan-400 bg-cyan-950 px-2 py-0.5 rounded border border-cyan-800">Theory 01</span>
-        <h2 class="text-2xl font-bold text-white">The Exact Mathematical Bridge to R<sub>t</sub></h2>
-      </div>
-
-      <div class="bg-slate-900/50 border border-slate-800 rounded-xl p-5 space-y-4 text-sm text-slate-300">
-        <p>
-          At any tracking time step <code class="font-mono text-cyan-300">t</code>, the UAS has physical sensor telemetry errors from gimbal IMU jitter, altitude uncertainty, and bounding box localization:
-        </p>
-
-        <div class="p-3 bg-black/50 border border-slate-800 rounded font-mono text-xs text-center text-amber-300">
-          &Sigma;<sub>pose</sub> = 
-          [ &sigma;<sub>&phi;</sub><sup>2</sup> &emsp; 0 <br>
-          &emsp;0 &emsp; &sigma;<sub>&theta;</sub><sup>2</sup> ] &isin; &reals;<sup>2&times;2</sup>
-          &emsp;&emsp; (e.g., &sigma;<sub>&phi;</sub> = 8&deg;, &sigma;<sub>&theta;</sub> = 3&deg;)
-        </div>
-
-        <p>
-          The calibration phase produces a <strong>127 &times; 2 tangent sensitivity transfer matrix <code class="text-emerald-400">W</code></strong>:
-        </p>
-
-        <div class="p-3 bg-black/50 border border-slate-800 rounded font-mono text-xs text-center text-cyan-300">
-          W = [ w<sub>&phi;</sub> &emsp; w<sub>&theta;</sub> ] &isin; &reals;<sup>127&times;2</sup>
-        </div>
-
-        <p>
-          where <code class="text-emerald-300">w<sub>&phi;</sub> = &part;v / &part;&phi;</code> is the tangent direction swept per radian of azimuth orbit, and <code class="text-cyan-300">w<sub>&theta;</sub> = &part;v / &part;&theta;</code> is the tangent direction swept per radian of elevation climb.
-        </p>
-
-        <p>
-          By <strong>first-order error propagation</strong>, the observation noise covariance matrix <code class="text-emerald-400">R<sub>t</sub></code> fed into the Riemannian Kalman Gain equation <code class="font-mono">K = P(P + R<sub>t</sub>)<sup>-1</sup></code> is:
-        </p>
-
-        <div class="p-4 bg-emerald-950/20 border border-emerald-800/60 rounded-lg font-mono text-xs text-center text-emerald-300">
-          R<sub>t</sub> = W &Sigma;<sub>pose</sub> W<sup>T</sup> + &sigma;<sub>id</sub><sup>2</sup> I<sub>127</sub>
-          <div class="text-[11px] text-slate-400 mt-1 font-sans">
-            (Rank-2 Anisotropic Viewpoint Ellipsoid) + (Intrinsic Identity Noise Floor)
-          </div>
-        </div>
-      </div>
-    </section>
-
-    <!-- SECTION 2: WC-TPCA vs. Tangent PLS Comparison -->
-    <section class="space-y-4">
-      <div class="flex items-center gap-2">
-        <span class="text-xs font-mono text-cyan-400 bg-cyan-950 px-2 py-0.5 rounded border border-cyan-800">Methodology 02</span>
-        <h2 class="text-2xl font-bold text-white">Within-Class Tangent PCA vs. Tangent PLS</h2>
-      </div>
-
-      <div class="overflow-x-auto border border-slate-800 rounded-xl bg-slate-900/40">
-        <table class="w-full text-left text-xs text-slate-300">
-          <thead class="bg-slate-950/80 text-slate-400 uppercase font-mono border-b border-slate-800 text-[11px]">
-            <tr>
-              <th class="p-3">Attribute</th>
-              <th class="p-3 text-amber-400">Within-Class Tangent PCA (WC-TPCA)</th>
-              <th class="p-3 text-cyan-400">Tangent Partial Least Squares (T-PLS)</th>
-            </tr>
-          </thead>
-          <tbody class="divide-y divide-slate-800/60 font-mono text-[11px]">
-            <tr class="hover:bg-slate-800/30">
-              <td class="p-3 font-bold text-white font-sans">Supervision Mode</td>
-              <td class="p-3 text-slate-300">Unsupervised within identity</td>
-              <td class="p-3 text-cyan-300">Fully supervised (requires &phi;, &theta; labels)</td>
-            </tr>
-            <tr class="hover:bg-slate-800/30">
-              <td class="p-3 font-bold text-white font-sans">Identity Cancellation Mechanism</td>
-              <td class="p-3 text-amber-300">Centers each vehicle model k around its own Fr&eacute;chet mean &mu;<sub>k</sub> before pooling.</td>
-              <td class="p-3 text-cyan-300">Maximizes covariance directly against label matrix X = [cos &phi;, sin &phi;, &theta;].</td>
-            </tr>
-            <tr class="hover:bg-slate-800/30">
-              <td class="p-3 font-bold text-white font-sans">Axis Decoupling</td>
-              <td class="p-3 text-slate-400">Span is correct, but e<sub>1</sub> and e<sub>2</sub> may be an arbitrary diagonal rotation of azimuth and elevation.</td>
-              <td class="p-3 text-emerald-400">Explicitly isolates w<sub>&phi;</sub> (azimuth) from w<sub>&theta;</sub> (elevation).</td>
-            </tr>
-            <tr class="hover:bg-slate-800/30">
-              <td class="p-3 font-bold text-white font-sans">Transfer Matrix W Output</td>
-              <td class="p-3 text-slate-300">W = [ &radic;&lambda;<sub>1</sub> e<sub>1</sub>, &radic;&lambda;<sub>2</sub> e<sub>2</sub> ]</td>
-              <td class="p-3 text-cyan-300">W = Regression loading matrix B<sub>PLS</sub></td>
-            </tr>
-            <tr class="hover:bg-slate-800/30">
-              <td class="p-3 font-bold text-white font-sans">Best Practical Role</td>
-              <td class="p-3 text-slate-300 font-sans">Sanity check: verifying that within-vehicle variance is strictly 2-dimensional.</td>
-              <td class="p-3 text-emerald-300 font-sans">Production tracking filter: cleanly scales variance by separate physical gimbal/heading errors.</td>
-            </tr>
-          </tbody>
-        </table>
-      </div>
-    </section>
-
-    <!-- SECTION 3: Interactive Calibration Comparison Lab -->
-    <section class="space-y-4">
-      <div class="flex items-center gap-2">
-        <span class="text-xs font-mono text-cyan-400 bg-cyan-950 px-2 py-0.5 rounded border border-cyan-800">Interactive Lab</span>
-        <h2 class="text-2xl font-bold text-white">Visualizing Calibrated Noise Ellipsoids</h2>
-      </div>
-
-      <!-- How to Operate Callout Card -->
-      <div class="bg-slate-900/70 border border-slate-800 rounded-xl p-5 space-y-3 text-xs text-slate-300">
-        <div class="flex items-center justify-between border-b border-slate-800 pb-2">
-          <span class="font-bold text-sm text-cyan-300">How to Operate This Lab &amp; Observe the Differences</span>
-          <span class="font-mono text-[10px] text-slate-400">2-Minute Engineering Walkthrough</span>
-        </div>
-        
-        <div class="grid grid-cols-1 md:grid-cols-2 gap-3 text-slate-300">
-          <div>
-            <div class="font-semibold text-white mb-1">What the Geometry Represents:</div>
-            <ul class="list-disc pl-4 space-y-1 text-slate-400 text-[11px]">
-              <li><strong>Dark Sphere:</strong> The 128D visual embedding unit hypersphere (projected to 3D).</li>
-              <li><strong>Green Center Dot:</strong> Target vehicle's current mean embedding <code class="text-emerald-400">&mu;</code>.</li>
-              <li><strong>Green Ellipse:</strong> The calibrated 95% observation noise envelope <code class="text-emerald-400">R<sub>t</sub></code>. Any detection landing inside is treated as the same vehicle.</li>
-              <li><strong class="text-red-400">Red Arrow (w<sub>&phi;</sub>):</strong> Tangent sensitivity direction under horizontal azimuth orbit.</li>
-              <li><strong class="text-blue-400">Blue Arrow (w<sub>&theta;</sub>):</strong> Tangent sensitivity direction under vertical elevation climb.</li>
-            </ul>
-          </div>
-
-          <div>
-            <div class="font-semibold text-white mb-1">The 3-Step Test to Run:</div>
-            <ol class="list-decimal pl-4 space-y-1 text-slate-400 text-[11px]">
-              <li><strong>Inject Asymmetric Noise:</strong> Drag Azimuth Uncertainty <code class="text-red-400">&sigma;<sub>&phi;</sub> &rarr; 22&deg;</code> (drone circling fast) and Elevation Uncertainty <code class="text-blue-400">&sigma;<sub>&theta;</sub> &rarr; 2&deg;</code> (altitude steady).</li>
-              <li><strong>Inspect Tangent PLS Mode:</strong> Notice the green ellipse stretches <em>strictly</em> along the red azimuth line. The vertical elevation thickness stays razor-sharp. (Zero cross-talk).</li>
-              <li><strong>Click "WC-TPCA" Mode:</strong> Notice the axes tilt diagonally! Because PCA does not know physical angle labels, the eigenvectors are a diagonal blend. The high azimuth noise now <strong>bleeds into the vertical dimension</strong>, artificially inflating vertical uncertainty.</li>
-            </ol>
-          </div>
-        </div>
-      </div>
-
-      <div class="border border-slate-800 bg-slate-950 rounded-xl p-4 shadow-xl">
-        <div class="flex justify-between items-center pb-2 border-b border-slate-800 mb-3">
-          <div>
-            <h3 class="font-semibold text-sm text-white">Interactive Calibration Explorer</h3>
-            <p class="text-xs text-slate-400">Compare how WC-TPCA and T-PLS shape the observation noise ellipsoid R<sub>t</sub> in tangent space.</p>
-          </div>
-          <div class="flex gap-1.5 font-mono text-[10px]">
-            <button id="modeTPLS" class="px-2 py-0.5 rounded bg-cyan-950 text-cyan-300 border border-cyan-800 font-bold">Tangent PLS (Decoupled)</button>
-            <button id="modeWCTPCA" class="px-2 py-0.5 rounded bg-slate-900 text-slate-400 border border-slate-700">WC-TPCA (Subspace)</button>
-          </div>
-        </div>
-
-        <div class="grid grid-cols-1 md:grid-cols-12 gap-3">
-          <div class="md:col-span-7">
-            <div class="relative w-full h-[230px] rounded-lg bg-black/80 border border-slate-800 overflow-hidden flex items-center justify-center">
-              <canvas id="canvasCalib" width="420" height="230" class="w-full h-full block"></canvas>
-              <div class="absolute bottom-1.5 left-2 text-[10px] font-mono bg-black/80 px-2 py-0.5 rounded text-white/90">
-                <span class="inline-block w-2 h-0.5 bg-red-400 mr-1 align-middle"></span>Azimuth Axis w<sub>&phi;</sub>
-                <span class="inline-block w-2 h-0.5 bg-blue-400 ml-1.5 mr-1 align-middle"></span>Elevation Axis w<sub>&theta;</sub>
-                <span class="inline-block w-2 h-2 border border-emerald-400 rounded-full ml-1.5 mr-1 align-middle"></span>Calibrated R<sub>t</sub> 95%
-              </div>
-            </div>
-
-            <!-- Stats -->
-            <div class="grid grid-cols-3 gap-1.5 mt-2 text-[10px] font-mono text-center">
-              <div class="p-1.5 rounded bg-slate-900 border border-slate-800">
-                <div class="text-slate-400 text-[9px]">Azimuth Noise Span</div>
-                <div id="statAzimSpan" class="text-red-400 font-bold text-xs mt-0.5">32.4&deg;</div>
-              </div>
-              <div class="p-1.5 rounded bg-slate-900 border border-slate-800">
-                <div class="text-slate-400 text-[9px]">Elevation Noise Span</div>
-                <div id="statElevSpan" class="text-blue-400 font-bold text-xs mt-0.5">12.1&deg;</div>
-              </div>
-              <div class="p-1.5 rounded bg-slate-900 border border-slate-800">
-                <div class="text-slate-400 text-[9px]">Identity Noise Floor</div>
-                <div id="statIdFloor" class="text-emerald-400 font-bold text-xs mt-0.5">2.3&deg;</div>
-              </div>
-            </div>
-          </div>
-
-          <div class="md:col-span-5 flex flex-col justify-between space-y-2 text-xs">
-            <div class="p-2 rounded bg-slate-900 border border-slate-800 space-y-2">
-              <div class="text-[11px] font-semibold text-slate-300">UAS Flight Jitter &amp; Telemetry Inputs</div>
-              
-              <div>
-                <div class="flex justify-between text-[10px] text-slate-400">
-                  <span>Orbit Azimuth Uncertainty (&sigma;<sub>&phi;</sub>):</span>
-                  <span id="valSigmaAzim" class="text-red-400 font-mono font-bold">10&deg;</span>
-                </div>
-                <input id="sliderSigmaAzim" type="range" min="1" max="25" value="10" class="w-full h-1 bg-black rounded cursor-pointer">
-              </div>
-
-              <div>
-                <div class="flex justify-between text-[10px] text-slate-400">
-                  <span>Climb Elevation Uncertainty (&sigma;<sub>&theta;</sub>):</span>
-                  <span id="valSigmaElev" class="text-blue-400 font-mono font-bold">3&deg;</span>
-                </div>
-                <input id="sliderSigmaElev" type="range" min="1" max="15" value="3" class="w-full h-1 bg-black rounded cursor-pointer">
-              </div>
-
-              <div>
-                <div class="flex justify-between text-[10px] text-slate-400">
-                  <span>Crop / Detector Quality:</span>
-                  <span id="valQuality" class="text-emerald-400 font-mono font-bold">1.0x</span>
-                </div>
-                <input id="sliderQuality" type="range" min="0.2" max="2.0" step="0.1" value="1.0" class="w-full h-1 bg-black rounded cursor-pointer">
-              </div>
-            </div>
-
-            <div class="p-2 rounded bg-slate-900/60 border border-slate-800 text-[10px] text-slate-400 space-y-1">
-              <div class="font-bold text-slate-300">Key Takeaway for Engineers:</div>
-              <p id="calibInsightText">
-                In <strong>Tangent PLS mode</strong>, the red azimuth axis and blue elevation axis decouple cleanly. Increasing orbit uncertainty stretches the noise ellipsoid along azimuth without diluting vertical feature certainty.
-              </p>
-            </div>
-          </div>
-        </div>
-      </div>
-    </section>
-
-    <!-- SECTION 4: Comparative Python Code for Engineers -->
-    <section class="space-y-4">
-      <div class="flex items-center gap-2">
-        <span class="text-xs font-mono text-cyan-400 bg-cyan-950 px-2 py-0.5 rounded border border-cyan-800">Implementation</span>
-        <h2 class="text-2xl font-bold text-white">Python Calibration Pipeline &amp; Investigation Blueprint</h2>
-      </div>
-
-      <!-- Tutorial & Engineering Intent Narrative -->
-      <div class="bg-slate-900/70 border border-slate-800 rounded-xl p-5 space-y-4 text-xs text-slate-300">
-        <div class="border-b border-slate-800 pb-2">
-          <span class="font-bold text-sm text-amber-300">Engineering Intent: The Proposed Investigation</span>
-          <p class="text-[11px] text-slate-400 mt-0.5">A roadmap for our research engineering team on how to take our synthetic car dataset and implement this filter.</p>
-        </div>
-
-        <div class="space-y-3">
-          <div>
-            <span class="font-bold text-white">1. The Motivation (Why We Are Doing This):</span>
-            <p class="text-slate-400 mt-0.5">
-              In our multi-hypothesis tracker (MHT), target states will incorporate visual embeddings alongside 3D kinematics. Standard trackers fail during aerial orbit maneuvers because they treat all 128 embedding dimensions equally. If our UAS climbs or circles a target, the visual features change, causing false track drops. Our goal is to extract the <strong>viewpoint sensitivity matrix W</strong> so the filter allows variance along flight-induced angles while clamping invariant vehicle identity.
-            </p>
-          </div>
-
-          <div>
-            <span class="font-bold text-white">2. The Proposed Offline Experiment (Your Action Items):</span>
-            <p class="text-slate-400 mt-0.5">
-              We want to test both calibration methods on our synthetic car dataset to contrast their real-world behavior:
-            </p>
-            <ul class="list-disc pl-5 mt-1 space-y-1 text-slate-400 text-[11px]">
-              <li><strong>Step A (Run WC-TPCA):</strong> Run <code class="text-amber-400 font-mono">calibrate_within_class_tpca()</code> on our synthetic car bank. Plot the eigenvalue scree plot to verify that within-vehicle variance drops sharply after 2 components.</li>
-              <li><strong>Step B (Run Tangent PLS):</strong> Run <code class="text-cyan-400 font-mono">calibrate_tangent_pls()</code> using the simulated ground-truth angles <code class="font-mono">[cos &phi;, sin &phi;, &theta;]</code>. Check the cross-validation R<sup>2</sup> score of angle recovery from the tangent space.</li>
-              <li><strong>Step C (Contrast Subspaces):</strong> Compute the subspace angle (Grassmann distance) between the 2D plane discovered by WC-TPCA and the plane discovered by Tangent PLS. Check if WC-TPCA's axes suffer from diagonal mixing.</li>
-              <li><strong>Step D (Runtime Tracking):</strong> Wire the winning sensitivity vectors into <code class="text-emerald-400 font-mono">build_runtime_covariance_R()</code> inside our Riemannian EKF tracker and benchmark track retention across extreme UAS elevation climb profiles.</li>
-            </ul>
-          </div>
-
-          <div>
-            <span class="font-bold text-white">3. Two-Phase Architecture:</span>
-            <div class="grid grid-cols-1 md:grid-cols-2 gap-2 mt-1 text-[11px] font-mono">
-              <div class="p-2 rounded bg-black/40 border border-slate-800">
-                <span class="text-amber-400 font-bold block mb-0.5">Phase 1: Offline Calibration (Run Once)</span>
-                Processes synthetic dataset to output canonical sensitivity vectors <code class="text-white">w_azim</code> and <code class="text-white">w_elev</code>.
-              </div>
-              <div class="p-2 rounded bg-black/40 border border-slate-800">
-                <span class="text-emerald-400 font-bold block mb-0.5">Phase 2: Online Tracker (Runs at 50 Hz)</span>
-                Takes UAS gimbal/flight errors (&sigma;<sub>&phi;</sub>, &sigma;<sub>&theta;</sub>) and projects sensitivity vectors to build dynamic <code class="text-white">R<sub>t</sub></code> in &lt;0.05 ms.
-              </div>
-            </div>
-          </div>
-        </div>
-      </div>
-
-      <div class="space-y-2">
-        <h3 class="text-sm font-bold text-cyan-400 font-mono">Side-by-Side: WC-TPCA vs. Tangent PLS Calibration</h3>
-        <pre><code class="language-python text-xs text-slate-300 p-4 block">import numpy as np
-from sklearn.cross_decomposition import PLSRegression
-
-def log_map_sphere(mu, y):
-    """Riemannian Log-Map from unit vector y onto T_mu(S^{d-1})."""
-    cos_t = np.clip(np.dot(mu, y), -1.0, 1.0)
-    theta = np.arccos(cos_t)
-    if theta < 1e-7:
-        return np.zeros_like(mu)
-    return (theta / np.sin(theta)) * (y - cos_t * mu)
-
-# =========================================================================
-# METHOD A: Within-Class Tangent PCA (WC-TPCA)
-# =========================================================================
-def calibrate_within_class_tpca(dataset_by_car, d=128):
-    """
-    dataset_by_car: dict { car_id: [ (y_vector, azim_rad, elev_rad), ... ] }
-    Cancels identity by centering each car around its own Frechet mean.
-    """
-    all_centered_tangents = []
-    
-    for car_id, samples in dataset_by_car.items():
-        embeddings = np.array([s[0] for s in samples])
-        # Compute Frechet mean embedding for this vehicle
-        mu_k = np.mean(embeddings, axis=0)
-        mu_k /= np.linalg.norm(mu_k)
-        
-        # Project all samples of this car onto its tangent plane
-        for y, _, _ in samples:
-            v = log_map_sphere(mu_k, y)
-            all_centered_tangents.append(v)
-            
-    # SVD on pooled within-class tangents
-    V = np.array(all_centered_tangents) # Shape: (N, 128)
-    _, S, Vt = np.linalg.svd(V, full_matrices=False)
-    
-    # Top 2 principal directions of viewpoint variation
-    e1_view = Vt[0]
-    e2_view = Vt[1]
-    return e1_view, e2_view, S[:2]
-
-# =========================================================================
-# METHOD B: Tangent Partial Least Squares (T-PLS) - RECOMMENDED
-# =========================================================================
-def calibrate_tangent_pls(dataset_samples, global_mu, n_components=2):
-    """
-    dataset_samples: list of (y_vector, azim_rad, elev_rad)
-    Supervised regression against periodic angle coordinates.
-    """
-    # 1. Feature Matrix V: Tangent vectors relative to reference mean
-    V = np.array([log_map_sphere(global_mu, s[0]) for s in dataset_samples])
-    
-    # 2. Target Label Matrix X: Periodic circular coordinates
-    X = np.array([[np.cos(s[1]), np.sin(s[1]), s[2]] for s in dataset_samples])
-    
-    # 3. Fit PLS Regression
-    pls = PLSRegression(n_components=n_components)
-    pls.fit(V, X)
-    
-    # Extract sensitivity loading directions
-    # W_view shape: (128, n_components)
-    W_view = pls.x_loadings_
-    w_azim = W_view[:, 0] / np.linalg.norm(W_view[:, 0])
-    w_elev = W_view[:, 1] / np.linalg.norm(W_view[:, 1])
-    return w_azim, w_elev
-
-# =========================================================================
-# RUNTIME: Assemble R_t for Riemannian EKF at Tracking Time
-# =========================================================================
-def build_runtime_covariance_R(y_obs, w_azim, w_elev, sigma_az_rad, sigma_el_rad, sigma_id=0.03):
-    """
-    Projects calibrated sensitivity vectors to local tangent space of y_obs
-    and computes full 127x127 observation noise covariance R_t.
-    """
-    # Project vectors onto tangent space of y_obs
-    def project_tangent(vec, base):
-        t = vec - np.dot(vec, base) * base
-        return t / (np.linalg.norm(t) + 1e-9)
-        
-    u_az = project_tangent(w_azim, y_obs)
-    u_el = project_tangent(w_elev, y_obs)
-    
-    # Build local tangent basis E (128, 127)
-    idx = np.argmin(np.abs(y_obs))
-    arb = np.zeros(128); arb[idx] = 1.0
-    A = np.random.randn(128, 127)
-    A = A - np.outer(y_obs, y_obs @ A)
-    E, _ = np.linalg.qr(A)
-    
-    # Express in 127D coordinates
-    z_az = E.T @ u_az
-    z_el = E.T @ u_el
-    
-    # R_t = var_az * (z_az z_az^T) + var_el * (z_el z_el^T) + var_id * I
-    R_tangent = ((sigma_az_rad**2) * np.outer(z_az, z_az) +
-                 (sigma_el_rad**2) * np.outer(z_el, z_el) +
-                 (sigma_id**2) * np.eye(127))
-    return R_tangent
-</code></pre>
-      </div>
-    </section>
-
-    <!-- Footer -->
-    <footer class="pt-8 border-t border-slate-800 text-center text-xs text-slate-400">
-      Spherical Bayesian Filtering &bull; Module 02: Noise Calibration &bull; 2026
-    </footer>
-
+<section aria-labelledby="two-questions">
+  <h2 id="two-questions">What we know in simulation, and what we will estimate in flight</h2>
+  <div class="grid">
+    <article class="card"><h3>During calibration: exact geometry</h3><p>The simulator supplies each image's vehicle identity and true viewing geometry. These are our <strong>labels</strong>: we can relate a known change in azimuth, elevation, or target yaw to the resulting embedding change.</p><p>We can select nearby views, or generate controlled variations, to measure the response one physical input at a time.</p></article>
+    <article class="card"><h3>During tracking: estimated geometry</h3><p>The drone provides estimates of camera position and orientation, together with their uncertainty. From those estimates we derive uncertainty in the viewing geometry relative to the target.</p><p>Our calibrated appearance sensitivities then help turn that physical uncertainty into directional observation noise for the filter.</p></article>
   </div>
+  <p>The known geometry in simulation lets us <strong>learn and test the bridge</strong>. The uncertainty of real-world geometry tells us <strong>how much tolerance to apply through it</strong>.</p>
+</section>
 
-  <!-- SCRIPT: INTERACTIVE CALIBRATION LAB ENGINE -->
-  <script>
-    (function() {
-      const canvas = document.getElementById('canvasCalib');
-      const ctx = canvas.getContext('2d');
-      let rotX = 0.45, rotY = -0.50;
-      let isDragging = false, lastX = 0, lastY = 0;
+<section aria-labelledby="physics">
+  <h2 id="physics">The bridge: geometry → appearance sensitivity → observation noise</h2>
+  <p>Suppose a small azimuth change moves the embedding strongly along one direction, while an equal elevation change has a smaller effect elsewhere. Those measured responses tell us where physical uncertainty will have its biggest impact.</p>
+  <p>Now suppose the drone's pose estimate leaves the relative azimuth more uncertain than elevation. We allow more appearance discrepancy along the azimuth-sensitive direction. We can keep other directions more precise, instead of broadening every feature equally.</p>
+  <div class="equation">Rₜ ≈ W Σ_view Wᵀ + R_other</div>
+  <p><strong>W:</strong> the appearance response learned from known simulated geometry. <strong>Σ_view:</strong> uncertainty in the relative viewing angles. <strong>R_other:</strong> the remaining appearance-error allowance. Together they give <strong>Rₜ</strong>, the observation uncertainty used by the filter.</p>
+  <p>Exact simulation labels do not make appearance variation disappear. We can also measure the same-vehicle changes that our simple appearance predictor leaves unexplained, and use them to calibrate that remaining allowance.</p>
+  <details><summary>Optional: how camera pose uncertainty enters this equation</summary><p>A camera position/orientation covariance is not yet a viewing-angle covariance. First propagate it through the camera-to-target geometry to obtain Σ_view; include target position or heading uncertainty when used by that geometry. A given position error can produce different angle errors at different ranges.</p><p>W contains local appearance changes per radian. Keep those magnitudes and use consistent units. Its columns need not be perpendicular, and Σ_view may contain correlated errors. The expression is first-order uncertainty propagation. A diagonal Σ_view is a useful initial assumption to test.</p><p>The telemetry term accounts for uncertainty about geometry. Size the allowance for other unmodeled appearance changes from observed errors, avoiding double-counting. If pose uncertainty already enters through a joint state/observation model, account for it once.</p></details>
+</section>
 
-      let isTPLS = true;
-      let sigmaAzim = 10; // deg
-      let sigmaElev = 3;  // deg
-      let quality = 1.0;
+<section class="panel" aria-labelledby="route">
+  <h2 id="route">Four experiments, each building on the last</h2>
+  <p><a href="#build">1. Measure controlled responses</a> → <a href="#methods">2. Compare WC-TPCA and T-PLS</a> → <a href="#method-investigation">3. Check the uncertainty envelope</a> → <a href="#experiment">4. Test tracking</a>.</p>
+  <p class="note">Start with one embedding backbone. A reference is one vehicle at a chosen view. An appearance residual is the difference between a new embedding and that reference, described on the local tangent plane introduced in <a href="fundamentals.html#flat">Module 01</a>.</p>
+</section>
 
-      let mu = { x: 0, y: 0.15, z: 0.988 };
+<section aria-labelledby="build">
+  <h2 id="build">1. Measure one response at a time</h2>
+  <p><strong>Use:</strong> one vehicle, one reference view, and the simulator's true angle labels. Keep lighting, crop settings, and other rendering conditions fixed.</p>
+  <ol>
+    <li>Take views at a small positive and negative azimuth offset, for example ±2°, while keeping the other inputs fixed.</li>
+    <li>Compute their embedding differences in the same tangent coordinates. Divide their difference by the angular separation to estimate <strong>embedding change per radian</strong>.</li>
+    <li>Repeat for elevation and target yaw. This gives one named sensitivity vector per physical input: the initial columns of W.</li>
+    <li>Use those vectors to estimate the appearance change for small combinations of angle offsets, then compare with the actual simulated embeddings at those held-out combinations.</li>
+  </ol>
+  <p><strong>Produce:</strong> three measured response vectors and a plot comparing estimated and actual appearance changes. This checks whether a simple local three-input model is a useful starting point.</p>
+  <p><strong>Look for:</strong> which inputs have strong effects, whether their directions overlap, and how much variation remains unexplained. You can visualize their span in up to three dimensions.</p>
+  <details><summary>Optional: what “one direction per input” assumes</summary><p>The local model is <code>v ≈ w_az δaz + w_el δel + w_yaw δyaw</code>. Each vector can involve many embedding coordinates. The vectors need not be perpendicular or independent. If azimuth is defined relative to target heading, yaw may duplicate part of that effect; use the simulator's angle conventions consistently.</p><p>If the existing dataset lacks suitable one-input variations, generate a small controlled batch or use nearby labeled samples to fit a local relationship. Repeat the initial check at more views and vehicles before assuming that one W applies everywhere.</p></details>
+</section>
 
-      function norm(v) {
-        const l = Math.hypot(v.x, v.y, v.z) || 1e-9;
-        return { x: v.x / l, y: v.y / l, z: v.z / l, l };
-      }
-      function cross(a, b) {
-        return { x: a.y * b.z - a.z * b.y, y: a.z * b.x - a.x * b.z, z: a.x * b.y - a.y * b.x };
-      }
-      function getBasis(n) {
-        let arb = Math.abs(n.z) < 0.9 ? { x: 0, y: 0, z: 1 } : { x: 1, y: 0, z: 0 };
-        let u = norm(cross(n, arb));
-        let v = cross(n, u);
-        return { u, v };
-      }
+<section aria-labelledby="methods">
+  <h2 id="methods">2. Compare WC-TPCA and T-PLS on the same observations</h2>
+  <p><strong>Use:</strong> several nearby views of each vehicle, their embeddings, and their true simulator labels. Reserve other observations for checking the result. The controlled responses from Experiment 1 give us a reference for interpreting what these methods find.</p>
+  <div class="grid">
+    <article class="card"><span class="number">WC-TPCA · FOLLOW THE SPREAD</span><h3>“Where does this vehicle's appearance vary most?”</h3><p><strong>Within-Class Tangent PCA</strong> groups observations of the same vehicle, measures their local appearance differences, and finds the directions where they spread out most.</p><p><strong>Output:</strong> main directions and the amount of spread along each. Use them to build a baseline nuisance-uncertainty ellipse.</p></article>
+    <article class="card"><span class="number">T-PLS · USE THE VIEWPOINT LABELS</span><h3>“Which changes go with the viewing geometry?”</h3><p><strong>Tangent Partial Least Squares</strong> uses the same appearance differences together with azimuth, elevation, and other selected pose labels to learn a compact relationship.</p><p><strong>Output:</strong> a pose-related appearance model and its remaining errors. Use that relationship to help condition uncertainty on the viewing situation.</p></article>
+  </div>
+  <p><strong>Within-class</strong> means comparing the same vehicle across views. <strong>Tangent</strong> means describing nearby spherical differences in a local flat space. Both methods can find patterns involving many embedding coordinates.</p>
+  <p><strong>Why compare them?</strong> If the training orbit also climbed, PCA may find a diagonal spread because the two effects occurred together. Pose labels give T-PLS extra information for relating that spread to physical changes. Our dataset already contains those labels, so this is a practical comparison to run.</p>
+  <p><strong>Produce:</strong> the learned directions, the appearance variation they explain, and errors on observations excluded from fitting. Compare them with the controlled azimuth/elevation/yaw responses before using either model to construct R.</p>
+  <details><summary>Optional: interpreting the outputs</summary><p>A rotated PCA axis is a valid description of spread. PCA alone does not attach physical angle labels to its axes; a separate mapping can add that connection. T-PLS components may also mix physical causes. Derive physical sensitivities from the fitted mapping, rather than simply naming its first loadings “azimuth” and “elevation.”</p><p>For a forward pose-to-appearance model, use pose features as inputs and tangent appearance changes as outputs. Predicting pose from appearance is also a useful diagnostic, but its coefficients are not the forward sensitivities. Local angular offsets are convenient in a small neighborhood; circular features can handle periodic angles over wider views.</p><p>Include examples where the physical inputs vary separately. Align tangent coordinates explicitly before pooling references. Start with two or three components, then inspect the unexplained variation. Keep complete vehicle identities and sequences separate when testing transfer.</p></details>
+</section>
 
-      function project(v) {
-        const cY = Math.cos(rotY), sY = Math.sin(rotY);
-        const x1 = v.x * cY + v.z * sY, y1 = v.y, z1 = -v.x * sY + v.z * cY;
-        const cX = Math.cos(rotX), sX = Math.sin(rotX);
-        const x2 = x1, y2 = y1 * cX - z1 * sX, z2 = y1 * sX + z1 * cX;
-        return { x: canvas.width / 2 + x2 * 80, y: canvas.height / 2 - y2 * 80, z: z2 };
-      }
+<section class="lab" aria-labelledby="comparison-title">
+  <h2 id="comparison-title">Try it: training spread or pose-related tolerance?</h2>
+  <p>Switch between the roles of WC-TPCA and T-PLS. The first view shows the main directions of the training cloud. The second illustrates how a calibrated pose relationship lets us change the uncertainty assigned to azimuth and elevation.</p>
+  <p class="note">This sphere illustration uses two directions to keep the picture readable. The starting experiment above can use three named sensitivity vectors in the full embedding space.</p>
+  <div class="lab-grid">
+    <div class="lab-visual"><canvas id="comparison-canvas" width="520" height="380" role="img" aria-label="A rotatable illustration comparing principal directions of training appearance variation with pose-related directions and their uncertainty ellipse."></canvas><p class="legend">Gray dots: example training variation. <span class="green-text">Green: uncertainty ellipse.</span> Arrows: the directions described by the selected approach.</p><p class="note rotation-hint">Drag to rotate · arrow keys also rotate · double-click or Home to reset the view.</p></div>
+    <div class="controls">
+      <label for="comparison-mode">Which idea are we looking at? <select id="comparison-mode"><option value="pca">WC-TPCA · describe the training spread</option><option value="tpls">T-PLS · use a pose-related model</option></select></label>
+      <label><input id="comparison-coupled" type="checkbox" checked> Training orbit also climbed</label>
+      <label for="comparison-azimuth">Azimuth uncertainty <output id="comparison-azimuth-value"></output><input id="comparison-azimuth" type="range" min="1" max="20" value="12"></label>
+      <label for="comparison-elevation">Elevation uncertainty <output id="comparison-elevation-value"></output><input id="comparison-elevation" type="range" min="1" max="15" value="3"></label>
+      <div id="comparison-readout" class="readout" aria-live="polite"></div>
+      <p class="note">The angle sliders act on the pose-related model. This shows illustrative model outputs, not the results of fitting PCA or T-PLS to a vehicle dataset.</p>
+    </div>
+  </div>
+  <details><summary>Optional: what this illustration calculates</summary><p>The training cloud comes from a small, known two-direction example. The WC-TPCA view calculates its actual covariance eigenvectors. The T-PLS view assumes a calibrated pose-to-appearance map and varies the pose uncertainty passed through that map. It illustrates the intended use of supervised calibration; it does not run a PLS fit.</p><p>The example pose directions are deliberately not orthogonal: different physical changes can affect overlapping feature combinations. Separate physical inputs do not require uncorrelated embedding errors. A PCA model could also be conditioned on pose after adding a suitable mapping; the PCA view here shows the spread-only baseline.</p></details>
+</section>
 
-      function draw() {
-        ctx.clearRect(0, 0, canvas.width, canvas.height);
-        const basis = getBasis(mu);
+<section class="panel" aria-labelledby="method-investigation">
+  <h2 id="method-investigation">3. Check that the uncertainty envelope matches actual errors</h2>
+  <p><strong>Use:</strong> a nominal reference view, nearby images with exact simulator geometry, and an example viewing-angle uncertainty. Begin with a simple case such as “azimuth is more uncertain than elevation.”</p>
+  <ol>
+    <li>Treat the nominal view as the tracker's estimated view. Choose an angle-error distribution around it.</li>
+    <li>Draw many small angle offsets from that distribution. Render or select matching nearby views, using their actual geometry. The nominal view is the estimate; each sample's exact view is the simulated truth.</li>
+    <li>Measure the same-vehicle embedding differences from the nominal reference. Compare that cloud with the uncertainty predicted from W and the chosen angle uncertainty.</li>
+    <li>Repeat for different uncertainty levels and for models built using WC-TPCA and T-PLS. Use new samples rather than reusing the observations that fitted the models.</li>
+  </ol>
+  <p><strong>Produce:</strong> a plot of predicted envelopes over measured appearance differences, and the fraction of held-out differences inside the intended envelope. That fraction is its <strong>coverage</strong>.</p>
+  <p><strong>Look for:</strong> an envelope that changes in the right directions and is neither consistently too tight nor unnecessarily broad. Retaining simulator truth lets us check the result even though we deliberately give the simulated tracker an uncertain view.</p>
+  <details><summary>Optional: what this test does and does not simulate</summary><p>Sampling viewpoints with corresponding images tests the local appearance-uncertainty bridge. Changing telemetry labels alone, while leaving all image geometry unchanged, would not generate those appearance differences. End-to-end testing can separately perturb the pose estimates supplied to the tracker, keeping the true generated camera/target poses for scoring.</p><p>For the full physical chain, draw camera pose errors and propagate them through the relative-view geometry. When a full appearance predictor exists, evaluate its actual residuals. With a fixed-reference predictor, also calibrate its unmodeled viewpoint variation from data. Estimate remaining crop, lighting, or occlusion error separately using controlled changes to those conditions.</p></details>
+</section>
 
-        // Sphere
-        const cx = canvas.width / 2, cy = canvas.height / 2, r = 80;
-        const grad = ctx.createRadialGradient(cx - 20, cy - 20, 10, cx, cy, r);
-        grad.addColorStop(0, '#1e293b'); grad.addColorStop(1, '#020617');
-        ctx.fillStyle = grad;
-        ctx.beginPath(); ctx.arc(cx, cy, r, 0, Math.PI * 2); ctx.fill();
-        ctx.strokeStyle = 'rgba(148, 163, 184, 0.2)'; ctx.stroke();
+<section class="lab" aria-labelledby="selective-title">
+  <h2 id="selective-title">Try it: how the uncertainty changes association</h2>
+  <p>Association means deciding which detection belongs to an existing track. A and B below are equally far from the stored appearance, but A differs along a direction we expected to vary. The green gate is the region of discrepancies we are willing to consider. Change the uncertainty and see which candidates remain plausible.</p>
+  <div class="lab-grid">
+    <div><canvas id="association-canvas" width="520" height="340" role="img" aria-label="Two equal-distance candidates along different feature directions and an optional distractor, compared against an uncertainty gate."></canvas><p class="legend"><span class="green-text">Green: candidate gate from P + R.</span> <span class="amber-text">A / B: equal-distance candidates.</span> Pink D: known distractor in this illustration.</p><p class="note rotation-hint">Drag to rotate · arrow keys also rotate · double-click or Home to reset the view.</p></div>
+    <div class="controls">
+      <label for="association-mode">Uncertainty model <select id="association-mode"><option value="directional">Directional</option><option value="isotropic">Isotropic baseline</option></select></label>
+      <label for="association-ratio">Uncertainty multiplier along red <output id="association-ratio-value"></output><input id="association-ratio" type="range" min="1" max="40" value="25"></label>
+      <label><input id="association-distractor" type="checkbox"> Show a distractor along the unreliable direction</label>
+      <div id="association-readout" class="readout" aria-live="polite"></div>
+      <p class="note">The gate keeps plausible candidates for further association. It does not declare that every candidate inside is the same vehicle.</p>
+    </div>
+  </div>
+  <details><summary>Optional: what the score and gate mean</summary><p>The squared Mahalanobis distance is <code>zᵀ S⁻¹z</code>, with <code>S = P + R</code> in this local identity-observation example. The illustrative 95% gate uses the 2D Gaussian threshold 5.991. A 127D tangent model needs a threshold for its own effective dimension.</p><p>A local Gaussian association score also includes <code>log det S</code>. This accounts for uncertainty volume, so widening a gate is not a free improvement. A complete MHT score also needs the appropriate detection, clutter, and hypothesis terms.</p><p>The isotropic baseline holds the lower noise level in both directions. This demo illustrates directional weighting, not a tuned benchmark. Compare fitted models at matched false-association rates in the actual experiment.</p></details>
+</section>
 
-        // Axes definition
-        // T-PLS has orthogonal decoupled axes
-        // WC-TPCA has slight diagonal coupling tilt (e.g. 25 deg mixture)
-        let tilt = isTPLS ? 0 : 0.42;
-        let cT = Math.cos(tilt), sT = Math.sin(tilt);
-        let wAz = {
-          x: basis.u.x * cT + basis.v.x * sT,
-          y: basis.u.y * cT + basis.v.y * sT,
-          z: basis.u.z * cT + basis.v.z * sT
-        };
-        let wEl = {
-          x: -basis.u.x * sT + basis.v.x * cT,
-          y: -basis.u.y * sT + basis.v.y * cT,
-          z: -basis.u.z * sT + basis.v.z * cT
-        };
+<section class="callout" aria-labelledby="experiment">
+  <h2 id="experiment">4. Test whether it helps the tracker keep the right identity</h2>
+  <p><strong>Use:</strong> the same held-out simulated detection sequences for every filter, including an orbit-and-climb trajectory, partial occlusion, and similar-looking distractor vehicles. Keep the true camera poses and vehicle identities for evaluation.</p>
+  <p><strong>Do:</strong> supply estimated camera poses with controlled errors, then compare tuned vMF, isotropic tangent filtering, and tangent filtering using the WC-TPCA or T-PLS uncertainty models. Keep the detections and other tracker settings comparable.</p>
+  <p><strong>Measure:</strong> whether tracks keep their true vehicle identity, how often they switch to a distractor, and how often one vehicle's track breaks into pieces. Compare retention at similar false-association rates, so simply accepting more candidates does not look like an improvement.</p>
+  <p><strong>Produce:</strong> a side-by-side sequence review and a small results table. Once the benefit is clear on held-out simulations, check how well it transfers to real imagery and evaluate additional backbones.</p>
+</section>
 
-        // Radii based on uncertainties
-        const azRad = (sigmaAzim * Math.PI / 180) * 1.6;
-        const elRad = (sigmaElev * Math.PI / 180) * 1.6;
-        const idRad = (0.04 / Math.max(0.2, quality));
+<section aria-labelledby="python">
+  <h2 id="python">Optional Python starting point</h2>
+  <details><summary>First experiment: three controlled angle perturbations</summary><p>Render the same vehicle at ±2° around the reference azimuth, elevation, and yaw, changing one input at a time. This helper estimates one named sensitivity vector per input without forcing the vectors to be perpendicular.</p><pre><code>import numpy as np
+from research_examples import (
+    local_pose_sensitivities, pose_uncertainty_covariance,
+)
 
-        // Draw 95% Calibrated R_t Ellipse (Retracted via Exponential Map)
-        ctx.beginPath();
-        for (let i = 0; i <= 64; i++) {
-          const phi = (i / 64) * Math.PI * 2;
-          const du = (azRad + idRad) * Math.cos(phi);
-          const dv = (elRad + idRad) * Math.sin(phi);
+pairs = [(az_minus, az_plus), (el_minus, el_plus), (yaw_minus, yaw_plus)]
+mu, E, W = local_pose_sensitivities(
+    reference, pairs, steps_rad=np.deg2rad([2, 2, 2]),
+)
+# Initial angular error scales: choose and validate for the scenario.
+Sigma_pose = np.diag(np.deg2rad([8, 3, 5]) ** 2)
+R = pose_uncertainty_covariance(W, Sigma_pose)
+# R is in basis E at this reference; align it again if the filter moves.</code></pre><p>The three columns of W contain the measured embedding change per radian. Check them against held-out angle combinations, and inspect the remaining error before expanding to more views and vehicles.</p></details>
+  <details><summary>Learn a local error envelope, then use it in the filter</summary>
+    <p>The example learns a small number of directions from errors around one reliable reference. It retains error magnitudes and explicitly moves the envelope into the filter's coordinates.</p>
+    <pre><code>from research_examples import (
+    RiemannianSphereEKF, calibrate_local_errors,
+    build_runtime_covariance_R,
+)
 
-          const xi_x = wAz.x * du + wEl.x * dv;
-          const xi_y = wAz.y * du + wEl.y * dv;
-          const xi_z = wAz.z * du + wEl.z * dv;
+# Known same-vehicle samples in a LOCAL calibration neighborhood.
+model = calibrate_local_errors(reference, training_embeddings, rank=2)
+tracker = RiemannianSphereEKF(reference)
+R = build_runtime_covariance_R(model, tracker.mu, tracker.E)
 
-          const n = Math.hypot(xi_x, xi_y, xi_z);
-          const cn = Math.cos(n), sn = Math.sin(n) / (n || 1e-7);
+# Score first; update only after accepting an association.
+distance2, local_score = tracker.association_score(candidate, R)</code></pre>
+    <p>Rank two is an example setting, not a discovered property. This version uses uncentered SVD of prediction errors, so it includes the energy of an unmodeled mean shift. Centered PCA instead describes variation around the sample mean. Neither makes a zero-mean noise model exact.</p>
+    <p>If calibration uses live tracker residuals, account for existing state uncertainty P before assigning all their scatter to R. Use a reliable reference and controlled data for the first experiment.</p>
+    <details><summary>Show the calibration functions</summary><pre><code>def calibrate_local_errors(reference, observations, rank=2, floor_std=0.03):
+    &quot;&quot;&quot;Learn a local error envelope around ONE reliable reference.
 
-          const pt = {
-            x: mu.x * cn + xi_x * sn,
-            y: mu.y * cn + xi_y * sn,
-            z: mu.z * cn + xi_z * sn
-          };
-          const p = project(pt);
-          if (p.z > -0.2) {
-            if (i === 0) ctx.moveTo(p.x, p.y);
-            else ctx.lineTo(p.x, p.y);
-          }
-        }
-        ctx.strokeStyle = '#10b981'; ctx.lineWidth = 2.5; ctx.stroke();
-        ctx.fillStyle = 'rgba(16, 185, 129, 0.18)'; ctx.fill();
+    Use same-vehicle samples from comparable conditions. Uncentered SVD
+    captures expected squared prediction error, including unmodeled bias.
+    This is an effective zero-mean uncertainty approximation, not a claim
+    that the observed errors actually have zero mean. For centered PCA use
+    V - V.mean(0); its variances are S_centered**2 / (N - 1).
 
-        // Draw Sensitivity Axes Arrows
-        const pMu = project(mu);
-        const pAz = project({ x: mu.x + wAz.x * (azRad * 1.25), y: mu.y + wAz.y * (azRad * 1.25), z: mu.z + wAz.z * (azRad * 1.25) });
-        const pEl = project({ x: mu.x + wEl.x * (elRad * 1.25), y: mu.y + wEl.y * (elRad * 1.25), z: mu.z + wEl.z * (elRad * 1.25) });
+    Different references/vehicles require explicit alignment and transfer
+    validation before pooling. Training tracker residuals also contain P;
+    assigning their full scatter to R would count that uncertainty twice.
+    &quot;&quot;&quot;
+    mu = unit(reference)
+    E = tangent_basis(mu)
+    V = np.array([E.T @ log_map(mu, y) for y in observations])
+    if len(V) &lt; 2 or not 1 &lt;= rank &lt;= min(V.shape):
+        raise ValueError(&quot;Need at least two samples and a supported rank&quot;)
+    if not np.isfinite(floor_std) or floor_std &lt;= 0:
+        raise ValueError(&quot;Noise floor must be positive&quot;)
+    _, singular_values, axes = np.linalg.svd(V, full_matrices=False)
+    error_energy = singular_values[:rank] ** 2 / len(V)
+    return {
+        &quot;mu&quot;: mu,
+        &quot;directions&quot;: E @ axes[:rank].T,
+        &quot;extra_variance&quot;: np.maximum(error_energy - floor_std**2, 0),
+        &quot;floor_std&quot;: float(floor_std),
+        &quot;mean_error&quot;: E @ V.mean(axis=0),
+    }
 
-        // Red Azimuth Axis
-        ctx.beginPath(); ctx.moveTo(pMu.x, pMu.y); ctx.lineTo(pAz.x, pAz.y);
-        ctx.strokeStyle = '#f87171'; ctx.lineWidth = 2.5; ctx.stroke();
 
-        // Blue Elevation Axis
-        ctx.beginPath(); ctx.moveTo(pMu.x, pMu.y); ctx.lineTo(pEl.x, pEl.y);
-        ctx.strokeStyle = '#60a5fa'; ctx.lineWidth = 2.5; ctx.stroke();
+def build_runtime_covariance_R(calibration, filter_mu, filter_basis):
+    &quot;&quot;&quot;Move a LOCAL learned envelope into the filter&#x27;s current coordinates.
 
-        // Center Mean Dot
-        ctx.beginPath(); ctx.arc(pMu.x, pMu.y, 4, 0, Math.PI * 2);
-        ctx.fillStyle = '#10b981'; ctx.fill();
+    Reusing an envelope far from its calibration neighborhood is an untested
+    modeling assumption. Transport aligns coordinates; it does not establish
+    that the same nuisance pattern applies at another viewpoint or identity.
+    &quot;&quot;&quot;
+    moved = transport(calibration[&quot;mu&quot;], filter_mu, calibration[&quot;directions&quot;])
+    U = filter_basis.T @ moved
+    R = calibration[&quot;floor_std&quot;] ** 2 * np.eye(U.shape[0])
+    R += (U * calibration[&quot;extra_variance&quot;]) @ U.T
+    return covariance(R, U.shape[0], positive=True)
 
-        // Update readouts
-        document.getElementById('statAzimSpan').innerText = `${((azRad + idRad) * 180 / Math.PI).toFixed(1)}°`;
-        document.getElementById('statElevSpan').innerText = `${((elRad + idRad) * 180 / Math.PI).toFixed(1)}°`;
-        document.getElementById('statIdFloor').innerText = `${(idRad * 180 / Math.PI).toFixed(1)}°`;
-      }
 
-      // Handlers
-      const btnTPLS = document.getElementById('modeTPLS');
-      const btnWCTPCA = document.getElementById('modeWCTPCA');
-      const insight = document.getElementById('calibInsightText');
+def pose_uncertainty_covariance(J, Sigma_pose, floor_std=0.03):
+    &quot;&quot;&quot;Optional J Sigma J.T propagation for uncertain pose, not orbit drift.
 
-      btnTPLS.addEventListener('click', () => {
-        isTPLS = true;
-        btnTPLS.className = 'px-2 py-0.5 rounded bg-cyan-950 text-cyan-300 border border-cyan-800 font-bold';
-        btnWCTPCA.className = 'px-2 py-0.5 rounded bg-slate-900 text-slate-400 border border-slate-700';
-        insight.innerHTML = 'In <strong>Tangent PLS mode</strong>, the red azimuth axis and blue elevation axis decouple cleanly. Increasing orbit uncertainty stretches the noise ellipsoid along azimuth without diluting vertical feature certainty.';
-        draw();
-      });
+    J must contain actual local derivatives, with radians used consistently,
+    in the SAME tangent basis as the filter. Do not normalize its columns.
+    Pose covariance may have correlated entries. If pose is already part of
+    a joint state/measurement model, avoid adding its uncertainty twice.
+    &quot;&quot;&quot;
+    J = np.asarray(J, dtype=float)
+    if J.ndim != 2 or not np.all(np.isfinite(J)):
+        raise ValueError(&quot;Invalid sensitivity matrix&quot;)
+    if not np.isfinite(floor_std) or floor_std &lt;= 0:
+        raise ValueError(&quot;Noise floor must be positive&quot;)
+    Sigma_pose = covariance(Sigma_pose, J.shape[1])
+    return J @ Sigma_pose @ J.T + floor_std**2 * np.eye(J.shape[0])
 
-      btnWCTPCA.addEventListener('click', () => {
-        isTPLS = false;
-        btnWCTPCA.className = 'px-2 py-0.5 rounded bg-amber-950 text-amber-300 border border-amber-800 font-bold';
-        btnTPLS.className = 'px-2 py-0.5 rounded bg-slate-900 text-slate-400 border border-slate-700';
-        insight.innerHTML = 'In <strong>WC-TPCA mode</strong>, the axes span the correct 2D manifold, but eigenvectors are diagonal blends of azimuth and elevation. A large azimuth error slightly bleeds into the elevation dimension.';
-        draw();
-      });
 
-      document.getElementById('sliderSigmaAzim').addEventListener('input', (e) => {
-        sigmaAzim = parseFloat(e.target.value);
-        document.getElementById('valSigmaAzim').innerText = `${sigmaAzim}°`;
-        draw();
-      });
-      document.getElementById('sliderSigmaElev').addEventListener('input', (e) => {
-        sigmaElev = parseFloat(e.target.value);
-        document.getElementById('valSigmaElev').innerText = `${sigmaElev}°`;
-        draw();
-      });
-      document.getElementById('sliderQuality').addEventListener('input', (e) => {
-        quality = parseFloat(e.target.value);
-        document.getElementById('valQuality').innerText = `${quality.toFixed(1)}x`;
-        draw();
-      });
+def local_pose_sensitivities(reference, perturbation_pairs, steps_rad):
+    &quot;&quot;&quot;One local sensitivity column per controlled physical input.
 
-      canvas.addEventListener('mousedown', (e) => { isDragging = true; lastX = e.clientX; lastY = e.clientY; });
-      window.addEventListener('mouseup', () => isDragging = false);
-      window.addEventListener('mousemove', (e) => {
-        if (!isDragging) return;
-        rotY += (e.clientX - lastX) * 0.01; rotX += (e.clientY - lastY) * 0.01;
-        rotX = Math.max(-1.4, Math.min(1.4, rotX));
-        lastX = e.clientX; lastY = e.clientY;
-        draw();
-      });
+    perturbation_pairs contains (minus_embedding, plus_embedding) for each
+    input, e.g. azimuth, elevation, yaw. Other rendering conditions should
+    be held fixed. steps_rad contains the POSITIVE half-step for each pair.
+    Returns (reference_mu, tangent_basis, J). Columns retain their scale;
+    no independence or orthogonality of embedding effects is assumed.
+    &quot;&quot;&quot;
+    mu = unit(reference)
+    E = tangent_basis(mu)
+    steps = np.asarray(steps_rad, dtype=float)
+    pairs = list(perturbation_pairs)
+    if steps.shape != (len(pairs),) or not len(pairs):
+        raise ValueError(&quot;Supply one positive step per perturbation pair&quot;)
+    if not np.all(np.isfinite(steps)) or np.any(steps &lt;= 0):
+        raise ValueError(&quot;Perturbation steps must be positive radians&quot;)
+    columns = [
+        E.T @ (log_map(mu, plus) - log_map(mu, minus)) / (2 * step)
+        for (minus, plus), step in zip(pairs, steps)
+    ]
+    return mu, E, np.column_stack(columns)
+</code></pre></details>
+    <p><a href="research_examples.py" download>Download the full NumPy examples</a>. This is the empirical error-envelope starting point. T-PLS is the complementary supervised calibration investigation described above. See the <a href="https://scikit-learn.org/1.6/modules/generated/sklearn.cross_decomposition.PLSRegression.html">official PLS reference</a> for the meanings of its outputs.</p>
+  </details>
+</section>
+<section aria-labelledby="reference"><h2 id="reference">A relevant precedent</h2><p><a href="https://arxiv.org/abs/1904.09658">Shi &amp; Jain · Probabilistic Face Embeddings (2019)</a> uses uncertainty in embedding features for matching and fusion. It supports the general motivation for uncertainty-aware comparison; its face-recognition results do not validate our offroad vehicle model.</p></section>
+<div class="next"><a href="fundamentals.html">← Filtering fundamentals</a><a href="index.html">Research overview →</a></div>
 
-      draw();
-    })();
-  </script>
+  <footer>Aerial appearance tracking · Research tutorial · Illustrations and local approximation examples</footer>
+</main>
 </body>
 </html>

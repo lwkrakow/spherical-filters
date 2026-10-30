@@ -3,233 +3,75 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>Aerial Target Tracking on Riemannian Feature Manifolds</title>
-  <script src="https://www.gstatic.com/antigravity/web/dev/tailwindcss.min.js"></script>
-  <style>
-    pre { background: #090d16; border: 1px solid #1e293b; border-radius: 0.5rem; overflow-x: auto; }
-    code { font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace; }
-  </style>
+  <meta name="description" content="An approachable guide to moving from one spherical uncertainty scale to a filter that can trust some feature directions more than others.">
+  <title>Selective trust for aerial appearance tracking · Spherical Filters</title>
+  <link rel="stylesheet" href="styles.css">
+  <script src="labs.js" defer></script>
 </head>
-<body class="bg-[#0b0f19] text-slate-200 antialiased font-sans leading-relaxed">
+<body>
+<main>
+  <nav aria-label="Tutorial pages"><a href="index.html" aria-current="page">Overview & research path</a><a href="fundamentals.html">1 · Filtering fundamentals</a><a href="calibration.html">2 · Learning uncertainty</a></nav>
+  <header>
+    <span class="eyebrow">Research motivation & investigation path</span>
+    <h1>Selective trust for aerial appearance tracking</h1>
+    <p class="lede">An approachable guide to moving from one spherical uncertainty scale to a filter that can trust some feature directions more than others.</p>
+  </header>
 
-  <!-- Main Container -->
-  <div class="max-w-5xl mx-auto px-4 py-8 space-y-10">
+<section class="callout green" aria-labelledby="idea">
+  <span class="tag">The hypothesis we want to test</span>
+  <h2 id="idea">We can know what to trust without knowing exactly what comes next.</h2>
+  <p>As a camera moves around a vehicle, its visual embedding can change even though the vehicle's identity has not. We may not be able to predict that change precisely. We may still be able to learn <strong>which feature directions are likely to disagree, and by how much</strong>.</p>
+  <p>Our proposal is to tolerate those expected discrepancies, while giving more weight to appearance evidence that remains dependable.</p>
+</section>
 
-    <!-- Top Navigation Tabs -->
-    <nav class="flex flex-wrap items-center gap-2 border-b border-slate-800 pb-4">
-      <a href="index.html" class="px-3.5 py-1.5 rounded-lg text-xs font-mono font-bold bg-cyan-950/80 text-cyan-300 border border-cyan-800/80 shadow-sm">
-        Overview &amp; Strategy (Active)
-      </a>
-      <a href="fundamentals.html" class="px-3.5 py-1.5 rounded-lg text-xs font-mono font-medium text-slate-400 hover:text-white hover:bg-slate-900 border border-transparent transition">
-        Module 01: Filtering Fundamentals &amp; 3D Labs &rarr;
-      </a>
-      <a href="calibration.html" class="px-3.5 py-1.5 rounded-lg text-xs font-mono font-medium text-slate-400 hover:text-white hover:bg-slate-900 border border-transparent transition">
-        Module 02: Noise Calibration &amp; Tangent PLS &rarr;
-      </a>
-    </nav>
-
-    <!-- Document Header -->
-    <header class="space-y-3">
-      <div class="inline-flex items-center gap-2 px-2.5 py-1 rounded-full text-xs font-mono font-medium bg-cyan-950/70 text-cyan-400 border border-cyan-800/80">
-        Research Engineering Architecture &amp; Investigation Roadmap
-      </div>
-      <h1 class="text-3xl md:text-4xl font-extrabold text-white tracking-tight">
-        Aerial Target Tracking on Riemannian Feature Manifolds
-      </h1>
-      <p class="text-slate-400 text-base md:text-lg max-w-3xl">
-        Integrating 128D visual embeddings and physics-based observation noise calibration into Multi-Hypothesis Tracking (MHT).
-      </p>
-    </header>
-
-    <!-- Model Agnostic Callout Banner -->
-    <div class="bg-cyan-950/20 border border-cyan-800/60 rounded-xl p-4 text-xs text-slate-300 space-y-1.5">
-      <div class="flex items-center gap-2 font-bold text-cyan-300">
-        <span class="inline-block w-2 h-2 rounded-full bg-cyan-400"></span>
-        Note on Embedding Dimension &amp; Backbone Agnosticism:
-      </div>
-      <p class="text-slate-400 leading-normal">
-        While the examples, dimensions, and visualizers highlighted throughout this guide use <strong class="text-white">128D</strong> (based on our current baseline, <strong class="text-cyan-300">Embedding Gamma 2</strong>), this Riemannian manifold filtering framework is mathematically model-agnostic. It applies directly to higher-dimensional visual backbones such as <strong class="text-white">DINO / DINOv2</strong> (384D / 768D) and <strong class="text-white">CLIP</strong> (512D). Part of our proposed engineering investigation is to evaluate which visual embedding backbone provides the cleanest separation between viewpoint-induced feature drift and invariant vehicle identity.
-      </p>
-    </div>
-
-    <!-- SECTION 1: Executive Summary & Problem Context -->
-    <section class="space-y-4">
-      <div class="flex items-center gap-2">
-        <span class="text-xs font-mono text-cyan-400 bg-cyan-950 px-2 py-0.5 rounded border border-cyan-800">Executive Summary</span>
-        <h2 class="text-2xl font-bold text-white">Problem Context &amp; Motivation</h2>
-      </div>
-
-      <div class="bg-slate-900/60 border border-slate-800 rounded-xl p-5 space-y-3 text-sm text-slate-300">
-        <p>
-          In our aerial multi-target tracking pipeline, target belief states must track not only 3D kinematics (position, velocity, heading) from cropped detector bounding boxes, but also <strong class="text-white">visual identity embeddings</strong> on the unit hypersphere (<code class="text-cyan-300">y &isin; S<sup>d-1</sup></code>).
-        </p>
-        <p>
-          Over recent months, we relied on a <strong class="text-emerald-400">von Mises-Fisher (vMF)</strong> distribution. While mathematically clean, vMF has a fundamental flaw: <strong class="text-amber-400">it is strictly isotropic</strong>. A single scalar concentration parameter <code class="text-emerald-300">&kappa;</code> forces uncertainty to be rotationally symmetric and identical across all 128 dimensions.
-        </p>
-        <p>
-          In our tracker, we already possess kinematic estimates of the target's 3D pose, UAS camera gimbal angles, and relative viewing geometry (azimuth <code class="text-cyan-300">&phi;</code>, elevation <code class="text-cyan-300">&theta;</code>). Forcing this rich physical knowledge through a single scalar &kappa; wastes information:
-        </p>
-        <ul class="list-disc pl-5 space-y-1.5 text-xs text-slate-400 font-mono">
-          <li><strong>Viewpoint Smear:</strong> When our UAS circles or climbs over a vehicle, viewpoint-induced appearance shifts cause the isotropic filter to either <em class="text-rose-400">over-adapt</em> (eroding invariant identity features) or <em class="text-rose-400">under-adapt</em> (triggering false track drops in MHT gating).</li>
-          <li><strong>The Core Objective:</strong> We want to choose an embedding method—whether that is <strong class="text-white">Embedding Gamma 2</strong>, <strong class="text-white">DINO</strong>, or <strong class="text-white">CLIP</strong>—and establish a reasonable, <strong>physics-informed noise calibration</strong> based on our sensor and flight models so that observation noise appropriately impacts the visual embedding state.</li>
-        </ul>
-      </div>
-    </section>
-
-    <!-- SECTION 2: The Architectural Arc -->
-    <section class="space-y-4">
-      <div class="flex items-center gap-2">
-        <span class="text-xs font-mono text-cyan-400 bg-cyan-950 px-2 py-0.5 rounded border border-cyan-800">Architecture</span>
-        <h2 class="text-2xl font-bold text-white">The Architectural Arc: Evolution of the Filter</h2>
-      </div>
-
-      <div class="grid grid-cols-1 md:grid-cols-4 gap-3 text-xs">
-        <!-- Phase 1 -->
-        <div class="p-4 rounded-xl bg-slate-900/60 border border-slate-800 space-y-2 flex flex-col justify-between">
-          <div>
-            <div class="text-[10px] font-mono text-slate-400 uppercase tracking-wider">Phase 01 &bull; Baseline</div>
-            <h3 class="font-bold text-emerald-400 text-sm mt-0.5">von Mises-Fisher (vMF)</h3>
-            <p class="text-slate-400 text-[11px] mt-1.5">
-              Circular uncertainty cone governed by single scalar &kappa;. Viewpoint-blind; cannot accommodate camera orbit drift without inflating variance across invariant identity dimensions.
-            </p>
-          </div>
-          <div class="pt-2 border-t border-slate-800/80 text-[10px] font-mono text-slate-400">
-            Contour: Strictly Circular
-          </div>
-        </div>
-
-        <!-- Phase 2 -->
-        <div class="p-4 rounded-xl bg-slate-900/60 border border-slate-800 space-y-2 flex flex-col justify-between">
-          <div>
-            <div class="text-[10px] font-mono text-slate-400 uppercase tracking-wider">Phase 02 &bull; Viable Models</div>
-            <h3 class="font-bold text-amber-400 text-sm mt-0.5">Kent Distribution (FB<sub>5</sub>)</h3>
-            <p class="text-slate-400 text-[11px] mt-1.5">
-              Explored true spherical analogue to a full Gaussian, allowing elliptical contours on S<sup>2</sup>. Proved directional concept, but hit severe computational bottlenecks in 128D (hypergeometric normalizers).
-            </p>
-          </div>
-          <div class="pt-2 border-t border-slate-800/80 text-[10px] font-mono text-slate-400">
-            Contour: Elliptical (3D only)
-          </div>
-        </div>
-
-        <!-- Phase 3 -->
-        <div class="p-4 rounded-xl bg-slate-900/60 border border-slate-800 space-y-2 flex flex-col justify-between">
-          <div>
-            <div class="text-[10px] font-mono text-slate-400 uppercase tracking-wider">Phase 03 &bull; Production Engine</div>
-            <h3 class="font-bold text-cyan-400 text-sm mt-0.5">Riemannian EKF (R-EKF)</h3>
-            <p class="text-slate-400 text-[11px] mt-1.5">
-              Investigated scalable production implementation. Transposes filtering to Euclidean tangent space T<sub>&mu;</sub>S<sup>d-1</sup> with Log/Exp maps. Supports full anisotropic covariance in &lt;0.05 ms.
-            </p>
-          </div>
-          <div class="pt-2 border-t border-slate-800/80 text-[10px] font-mono text-slate-400">
-            Scalability: 128D / 512D / 768D
-          </div>
-        </div>
-
-        <!-- Phase 4 -->
-        <div class="p-4 rounded-xl bg-slate-900/60 border border-slate-800 space-y-2 flex flex-col justify-between">
-          <div>
-            <div class="text-[10px] font-mono text-slate-400 uppercase tracking-wider">Phase 04 &bull; Calibration</div>
-            <h3 class="font-bold text-emerald-300 text-sm mt-0.5">Tangent PLS Calibration</h3>
-            <p class="text-slate-400 text-[11px] mt-1.5">
-              Current milestone. Uses synthetic vehicle datasets and UAS telemetry errors to construct calibrated, directional observation noise matrices R<sub>t</sub> directly on the tangent plane.
-            </p>
-          </div>
-          <div class="pt-2 border-t border-slate-800/80 text-[10px] font-mono text-slate-400">
-            Output: Physically Grounded R<sub>t</sub>
-          </div>
-        </div>
-      </div>
-    </section>
-
-    <!-- SECTION 3: Guide to the Documentation & Interactive Modules -->
-    <section class="space-y-4">
-      <div class="flex items-center gap-2">
-        <span class="text-xs font-mono text-cyan-400 bg-cyan-950 px-2 py-0.5 rounded border border-cyan-800">Site Modules</span>
-        <h2 class="text-2xl font-bold text-white">Interactive Modules Overview</h2>
-      </div>
-
-      <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
-        <!-- Card Module 1 -->
-        <a href="fundamentals.html" class="group p-5 rounded-xl bg-slate-900/60 border border-slate-800 hover:border-cyan-500/60 transition space-y-3 block">
-          <div class="flex justify-between items-center">
-            <span class="text-xs font-mono text-cyan-400 bg-cyan-950 px-2 py-0.5 rounded border border-cyan-800">Module 01</span>
-            <span class="text-xs font-mono text-slate-400 group-hover:text-cyan-300 transition">&rarr; Open Module</span>
-          </div>
-          <h3 class="text-lg font-bold text-white group-hover:text-cyan-300 transition">Filtering Fundamentals &amp; 3D Interactive Labs</h3>
-          <p class="text-xs text-slate-400 leading-normal">
-            Covers the mathematical foundations of directional statistics: the <strong>Kalman Filter Rosetta Stone</strong>, hands-on 3D trackball simulators for vMF, Kent, and the Riemannian EKF, plus drop-in Python classes.
-          </p>
-          <div class="pt-2 border-t border-slate-800/60 flex gap-2 text-[10px] font-mono text-slate-400">
-            <span>&bull; vMF Simulator</span>
-            <span>&bull; Kent Lab</span>
-            <span>&bull; R-EKF Mechanics</span>
-            <span>&bull; Python Appendix</span>
-          </div>
-        </a>
-
-        <!-- Card Module 2 -->
-        <a href="calibration.html" class="group p-5 rounded-xl bg-slate-900/60 border border-slate-800 hover:border-emerald-500/60 transition space-y-3 block">
-          <div class="flex justify-between items-center">
-            <span class="text-xs font-mono text-emerald-400 bg-emerald-950 px-2 py-0.5 rounded border border-emerald-800">Module 02</span>
-            <span class="text-xs font-mono text-slate-400 group-hover:text-emerald-300 transition">&rarr; Open Module</span>
-          </div>
-          <h3 class="text-lg font-bold text-white group-hover:text-emerald-300 transition">Viewpoint Noise Calibration &amp; Tangent PLS</h3>
-          <p class="text-xs text-slate-400 leading-normal">
-            Derives the error propagation bridge from UAS flight telemetry to 127D tangent space covariance <code class="text-emerald-400">R<sub>t</sub></code>. Directly contrasts <strong>Within-Class Tangent PCA</strong> vs. <strong>Tangent PLS</strong> with live 3D noise ellipsoids.
-          </p>
-          <div class="pt-2 border-t border-slate-800/60 flex gap-2 text-[10px] font-mono text-slate-400">
-            <span>&bull; Error Propagation</span>
-            <span>&bull; WC-TPCA vs T-PLS</span>
-            <span>&bull; 3D Noise Lab</span>
-            <span>&bull; Calibration Code</span>
-          </div>
-        </a>
-      </div>
-    </section>
-
-    <!-- SECTION 4: Proposed Investigations for the Engineering Team -->
-    <section class="space-y-4">
-      <div class="flex items-center gap-2">
-        <span class="text-xs font-mono text-cyan-400 bg-cyan-950 px-2 py-0.5 rounded border border-cyan-800">Next Steps</span>
-        <h2 class="text-2xl font-bold text-white">Proposed Investigations for the Engineering Team</h2>
-      </div>
-
-      <div class="bg-slate-900/60 border border-slate-800 rounded-xl p-5 space-y-4 text-xs text-slate-300">
-        <p class="text-slate-400">
-          Before locking the tracker configuration into flight software, we are tasking the research team with the following simulation investigations using our synthetic vehicle dataset:
-        </p>
-
-        <div class="grid grid-cols-1 md:grid-cols-3 gap-3">
-          <div class="p-3.5 rounded-lg bg-black/40 border border-slate-800 space-y-1.5">
-            <span class="font-bold text-amber-400 block text-xs">Investigation 1: WC-TPCA vs. T-PLS</span>
-            <p class="text-slate-400 text-[11px]">
-              Run both calibration routines on our synthetic car render bank. Evaluate the scree plot of eigenvalues (WC-TPCA) versus the cross-validation R<sup>2</sup> score of pose recovery (Tangent PLS). Measure Grassmannian subspace angle to check for diagonal cross-axis mixing.
-            </p>
-          </div>
-
-          <div class="p-3.5 rounded-lg bg-black/40 border border-slate-800 space-y-1.5">
-            <span class="font-bold text-cyan-400 block text-xs">Investigation 2: Cross-Backbone Comparison</span>
-            <p class="text-slate-400 text-[11px]">
-              Apply the Tangent PLS calibration pipeline across our candidate models: <strong class="text-white">Embedding Gamma 2</strong> (128D), <strong class="text-white">DINO / DINOv2</strong> (384D / 768D), and <strong class="text-white">CLIP</strong> (512D). Evaluate which manifold provides the cleanest separation between viewpoint drift and identity invariance.
-            </p>
-          </div>
-
-          <div class="p-3.5 rounded-lg bg-black/40 border border-slate-800 space-y-1.5">
-            <span class="font-bold text-emerald-400 block text-xs">Investigation 3: End-to-End MHT Benchmarking</span>
-            <p class="text-slate-400 text-[11px]">
-              Simulate a UAS executing an orbit-and-climb trajectory over a target vehicle with distractor cars. Compare track retention and false-drop rates between: (a) Baseline vMF, (b) Isotropic R-EKF, and (c) Tangent PLS Pose-Calibrated Anisotropic R-EKF.
-            </p>
-          </div>
-        </div>
-      </div>
-    </section>
-
-    <!-- Footer -->
-    <footer class="pt-8 border-t border-slate-800 text-center text-xs text-slate-400">
-      Aerial Target Tracking on Riemannian Feature Manifolds &bull; Research Engineering Suite &bull; 2026
-    </footer>
-
+<section aria-labelledby="problem">
+  <h2 id="problem">Why investigate a different uncertainty model?</h2>
+  <p>Our tracker uses cropped target images to help maintain vehicle identity alongside its position and motion estimates. A normalized image embedding is a compact description of appearance: a vector with unit length.</p>
+  <p>The current von Mises–Fisher (vMF) model describes a mean direction and one concentration value, <code>κ</code>. This is compact and useful. Its limitation for this investigation is that uncertainty is rotationally symmetric around the mean: it cannot independently widen tolerance along one feature direction while keeping another direction precise.</p>
+  <div class="grid">
+    <article class="card"><h3>A plausible same-vehicle change</h3><p>A new viewing angle changes a combination of embedding features. If that pattern is often unreliable, the mismatch should count less against an association.</p></article>
+    <article class="card"><h3>Evidence that still matters</h3><p>Another combination of features may remain relatively stable. A mismatch there can still provide useful evidence that this is a different vehicle.</p></article>
   </div>
+  <p class="note">A “feature direction” can combine many embedding coordinates. We do not assume that a particular coordinate means color, shape, or identity.</p>
+</section>
+
+<section aria-labelledby="path">
+  <h2 id="path">The learning path</h2>
+  <div class="grid">
+    <article class="card"><span class="number">01 · BASELINE</span><h3>vMF: one uncertainty scale</h3><p>Start with the existing spherical model and understand what a single concentration value can express.</p></article>
+    <article class="card"><span class="number">02 · INTUITION</span><h3>Kent: an elongated footprint</h3><p>Use a familiar 3D sphere to see what changes when uncertainty has a preferred direction.</p></article>
+    <article class="card"><span class="number">03 · CANDIDATE FILTER</span><h3>A tangent-space update</h3><p>Use a Riemannian EKF to maintain directional uncertainty around a normalized appearance estimate.</p></article>
+    <article class="card"><span class="number">04 · INVESTIGATION</span><h3>WC-TPCA and T-PLS calibration</h3><p>Compare directions of appearance spread with pose-related appearance patterns. Use them to build uncertainty models and evaluate tracking.</p></article>
+  </div>
+</section>
+
+<section class="callout" aria-labelledby="trust">
+  <h2 id="trust">What “trust those features less” means</h2>
+  <p><strong>For association:</strong> an expected discrepancy counts less against a possible match.</p>
+  <p><strong>For the appearance update:</strong> an unreliable observation component moves the stored estimate less. More reliable components can still contribute strongly.</p>
+  <p>This first investigation does not require a complete embedding transition law. It does require evidence that the chosen uncertainty patterns are useful on observations excluded from calibration.</p>
+</section>
+
+<section aria-labelledby="investigations">
+  <h2 id="investigations">The investigations, in order</h2>
+  <ol>
+    <li><strong>Find the error patterns.</strong> With one embedding backbone, observe the same vehicles across controlled viewpoint changes, crop variation, and partial occlusion. Measure which directions change and how many directions matter.</li>
+    <li><strong>Predict their reliability.</strong> Compare Within-Class Tangent PCA (WC-TPCA), which follows appearance spread, with Tangent PLS (T-PLS), which uses viewpoint labels to learn pose-related patterns. Investigate how viewpoint change and image quality affect the uncertainty.</li>
+    <li><strong>Test transfer.</strong> Hold out complete vehicle identities and sequences. Check whether calibration remains useful across viewpoints and, subsequently, real offroad imagery.</li>
+    <li><strong>Measure the tracking tradeoff.</strong> Compare tuned vMF, isotropic tangent filtering, and anisotropic tangent filtering. Measure false associations and identity switches alongside track retention.</li>
+    <li><strong>Then compare backbones and cost.</strong> Evaluate the current 128D model and selected DINO or CLIP variants. Calibrate each separately, and benchmark actual update time on the intended hardware.</li>
+  </ol>
+  <p class="note">The geometry applies to normalized embeddings of different dimensions. How well the uncertainty patterns separate nuisance variation from identity remains an empirical question for each backbone.</p>
+</section>
+
+<section class="panel" aria-labelledby="known">
+  <h2 id="known">What is established, and what is our hypothesis?</h2>
+  <p>Uncertainty-aware embedding comparison has precedent: <a href="https://arxiv.org/abs/1904.09658">Probabilistic Face Embeddings</a> represents uncertainty in image features and uses it for matching and fusion in face recognition.</p>
+  <p><strong>Our hypothesis:</strong> a directional uncertainty model can also improve vehicle identity association in aerial, offroad tracking. That application benefit has to be measured.</p>
+</section>
+<div class="next"><span>Start with the intuition and a small interactive example.</span><a href="fundamentals.html">Filtering fundamentals →</a></div>
+
+  <footer>Aerial appearance tracking · Research tutorial · Illustrations and local approximation examples</footer>
+</main>
 </body>
 </html>
