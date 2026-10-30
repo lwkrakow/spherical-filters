@@ -3,12 +3,9 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>Spherical Bayesian Filtering for Visual Embeddings</title>
+  <title>Aerial Target Tracking on Riemannian Feature Manifolds</title>
   <script src="https://www.gstatic.com/antigravity/web/dev/tailwindcss.min.js"></script>
   <style>
-    canvas { touch-action: none; cursor: grab; }
-    canvas:active { cursor: grabbing; }
-    input[type=range] { accent-color: #38bdf8; }
     pre { background: #090d16; border: 1px solid #1e293b; border-radius: 0.5rem; overflow-x: auto; }
     code { font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace; }
   </style>
@@ -18,1288 +15,221 @@
   <!-- Main Container -->
   <div class="max-w-5xl mx-auto px-4 py-8 space-y-10">
 
-    <!-- Top Navigation Tabs (Linking Part 1 and Part 2) -->
-    <nav class="flex items-center gap-2 border-b border-slate-800 pb-4">
-      <a href="index.html" class="px-4 py-2 rounded-lg text-xs font-mono font-bold bg-cyan-950/80 text-cyan-300 border border-cyan-800/80 shadow-sm">
-        Part 1: Filtering Fundamentals &amp; 3D Labs (Active)
+    <!-- Top Navigation Tabs -->
+    <nav class="flex flex-wrap items-center gap-2 border-b border-slate-800 pb-4">
+      <a href="index.html" class="px-3.5 py-1.5 rounded-lg text-xs font-mono font-bold bg-cyan-950/80 text-cyan-300 border border-cyan-800/80 shadow-sm">
+        Overview &amp; Strategy (Active)
       </a>
-      <a href="calibration.html" class="px-4 py-2 rounded-lg text-xs font-mono font-medium text-slate-400 hover:text-white hover:bg-slate-900 border border-transparent transition">
-        Part 2: Noise Calibration &amp; Tangent PLS &rarr;
+      <a href="fundamentals.html" class="px-3.5 py-1.5 rounded-lg text-xs font-mono font-medium text-slate-400 hover:text-white hover:bg-slate-900 border border-transparent transition">
+        Module 01: Filtering Fundamentals &amp; 3D Labs &rarr;
+      </a>
+      <a href="calibration.html" class="px-3.5 py-1.5 rounded-lg text-xs font-mono font-medium text-slate-400 hover:text-white hover:bg-slate-900 border border-transparent transition">
+        Module 02: Noise Calibration &amp; Tangent PLS &rarr;
       </a>
     </nav>
 
     <!-- Document Header -->
-    <header class="border-b border-slate-800 pb-6 space-y-3">
+    <header class="space-y-3">
       <div class="inline-flex items-center gap-2 px-2.5 py-1 rounded-full text-xs font-mono font-medium bg-cyan-950/70 text-cyan-400 border border-cyan-800/80">
-        Research Engineering Guide & Interactive Lab
+        Research Engineering Architecture &amp; Investigation Roadmap
       </div>
       <h1 class="text-3xl md:text-4xl font-extrabold text-white tracking-tight">
-        Spherical Bayesian Filtering for Visual Embeddings
+        Aerial Target Tracking on Riemannian Feature Manifolds
       </h1>
       <p class="text-slate-400 text-base md:text-lg max-w-3xl">
-        A deep-dive comparative guide on tracking unit hypersphere representations (<code class="text-cyan-300">S<sup>d-1</sup></code>) across viewpoint changes—from isotropic vMF and anisotropic Kent distributions to production Riemannian EKFs in 128D+.
+        Integrating 128D visual embeddings and physics-based observation noise calibration into Multi-Hypothesis Tracking (MHT).
       </p>
     </header>
 
-    <!-- Quick Navigation / TOC -->
-    <nav class="bg-slate-900/60 border border-slate-800 rounded-xl p-5">
-      <h2 class="text-xs font-mono uppercase tracking-wider text-slate-400 mb-3">Contents Overview</h2>
-      <div class="grid grid-cols-1 md:grid-cols-2 gap-2 text-sm text-cyan-400">
-        <a href="#matrix" class="hover:underline flex items-center gap-2"><span>&rarr;</span> 1. Executive Comparison Matrix</a>
-        <a href="#rosetta" class="hover:underline flex items-center gap-2"><span>&rarr;</span> 2. The Kalman Filter "Rosetta Stone" (Analogy Table)</a>
-        <a href="#vmf" class="hover:underline flex items-center gap-2"><span>&rarr;</span> 3. von Mises-Fisher (Isotropic Baseline)</a>
-        <a href="#kent" class="hover:underline flex items-center gap-2"><span>&rarr;</span> 4. Kent Distribution (Directional Anisotropy)</a>
-        <a href="#rekf" class="hover:underline flex items-center gap-2"><span>&rarr;</span> 5. Riemannian EKF for 128D+ Embeddings</a>
-        <a href="#guidelines" class="hover:underline flex items-center gap-2"><span>&rarr;</span> 6. Production Engineering Guidelines</a>
-        <a href="#appendix" class="hover:underline flex items-center gap-2"><span>&rarr;</span> Appendix: Production Python Implementations</a>
+    <!-- Model Agnostic Callout Banner -->
+    <div class="bg-cyan-950/20 border border-cyan-800/60 rounded-xl p-4 text-xs text-slate-300 space-y-1.5">
+      <div class="flex items-center gap-2 font-bold text-cyan-300">
+        <span class="inline-block w-2 h-2 rounded-full bg-cyan-400"></span>
+        Note on Embedding Dimension &amp; Backbone Agnosticism:
       </div>
-    </nav>
-
-    <!-- SECTION 1: Comparison Matrix -->
-    <section id="matrix" class="space-y-4">
-      <div class="flex items-center gap-2">
-        <span class="text-xs font-mono text-cyan-400 bg-cyan-950 px-2 py-0.5 rounded border border-cyan-800">Section 01</span>
-        <h2 class="text-2xl font-bold text-white">Executive Comparison Matrix</h2>
-      </div>
-      <p class="text-slate-300 text-sm">
-        Summary of the three principal mathematical paradigms for filtering consecutive directional visual embeddings:
+      <p class="text-slate-400 leading-normal">
+        While the examples, dimensions, and visualizers highlighted throughout this guide use <strong class="text-white">128D</strong> (based on our current baseline, <strong class="text-cyan-300">Embedding Gamma 2</strong>), this Riemannian manifold filtering framework is mathematically model-agnostic. It applies directly to higher-dimensional visual backbones such as <strong class="text-white">DINO / DINOv2</strong> (384D / 768D) and <strong class="text-white">CLIP</strong> (512D). Part of our proposed engineering investigation is to evaluate which visual embedding backbone provides the cleanest separation between viewpoint-induced feature drift and invariant vehicle identity.
       </p>
+    </div>
 
-      <div class="overflow-x-auto border border-slate-800 rounded-xl bg-slate-900/40">
-        <table class="w-full text-left text-xs text-slate-300">
-          <thead class="bg-slate-950/80 text-slate-400 uppercase font-mono border-b border-slate-800 text-[11px]">
-            <tr>
-              <th class="p-3">Model</th>
-              <th class="p-3">Euclidean Equivalent</th>
-              <th class="p-3">Contour Geometry</th>
-              <th class="p-3">Key Parameters</th>
-              <th class="p-3">Dimension Scalability</th>
-              <th class="p-3">Ideal Use Case</th>
-            </tr>
-          </thead>
-          <tbody class="divide-y divide-slate-800/60 font-mono">
-            <tr class="hover:bg-slate-800/30">
-              <td class="p-3 font-bold text-emerald-400">von Mises-Fisher (vMF)</td>
-              <td class="p-3 text-slate-400">Isotropic Gaussian N(&mu;, &sigma;<sup>2</sup>I)</td>
-              <td class="p-3 text-cyan-300">Strictly Circular (Spherical Cap)</td>
-              <td class="p-3">&mu; &isin; S<sup>d-1</sup>, &kappa; &ge; 0</td>
-              <td class="p-3 text-emerald-400">Any d (d=3 to d=1024)</td>
-              <td class="p-3 text-slate-300 font-sans">Fast tracking when viewpoint noise is uniform or unknown.</td>
-            </tr>
-            <tr class="hover:bg-slate-800/30">
-              <td class="p-3 font-bold text-amber-400">Kent (FB<sub>5</sub>)</td>
-              <td class="p-3 text-slate-400">Full 2D Gaussian N(&mu;, &Sigma;)</td>
-              <td class="p-3 text-amber-300">Elliptical (Major & Minor Axes)</td>
-              <td class="p-3">&gamma;<sub>1</sub>, &gamma;<sub>2</sub>, &gamma;<sub>3</sub>, &kappa;, &beta;</td>
-              <td class="p-3 text-rose-400">d = 3 only (S<sup>2</sup>)</td>
-              <td class="p-3 text-slate-300 font-sans">Camera pose, orbital azimuth sweeps, and 3D orientation tracking.</td>
-            </tr>
-            <tr class="hover:bg-slate-800/30">
-              <td class="p-3 font-bold text-cyan-400">Riemannian EKF (R-EKF)</td>
-              <td class="p-3 text-slate-400">Full N-D Kalman Filter</td>
-              <td class="p-3 text-cyan-300">High-D Hyperellipsoid on T<sub>&mu;</sub></td>
-              <td class="p-3">&mu; &isin; S<sup>d-1</sup>, P &isin; R<sup>(d-1)&times;(d-1)</sup></td>
-              <td class="p-3 text-emerald-400">High-D (d=128, 512, 768)</td>
-              <td class="p-3 text-slate-300 font-sans">High-D visual features (MagFace, CLIP, DINO) with viewpoint drift.</td>
-            </tr>
-          </tbody>
-        </table>
-      </div>
-    </section>
-
-    <!-- SECTION 2: The Kalman Filter Rosetta Stone -->
-    <section id="rosetta" class="space-y-4">
+    <!-- SECTION 1: Executive Summary & Problem Context -->
+    <section class="space-y-4">
       <div class="flex items-center gap-2">
-        <span class="text-xs font-mono text-cyan-400 bg-cyan-950 px-2 py-0.5 rounded border border-cyan-800">Section 02</span>
-        <h2 class="text-2xl font-bold text-white">The Kalman Filter "Rosetta Stone"</h2>
+        <span class="text-xs font-mono text-cyan-400 bg-cyan-950 px-2 py-0.5 rounded border border-cyan-800">Executive Summary</span>
+        <h2 class="text-2xl font-bold text-white">Problem Context &amp; Motivation</h2>
       </div>
 
       <div class="bg-slate-900/60 border border-slate-800 rounded-xl p-5 space-y-3 text-sm text-slate-300">
         <p>
-          Every research engineer understands the standard linear Kalman filter (<code class="text-emerald-400">&Delta;x = K(y - Hx)</code>, <code class="text-cyan-400">P = (I - K)P</code>). But why can't we just plug a unit embedding into a regular Kalman filter?
-        </p>
-        <div class="p-3 bg-rose-950/30 border border-rose-900/60 rounded text-xs text-rose-300">
-          <strong>The Manifold Breakdown:</strong> In Euclidean space, linear vector addition <code class="font-mono">x + Kv</code> stays in <code class="font-mono">&reals;<sup>n</sup></code>. On the unit hypersphere, vector addition <em>breaks the constraint</em>: <code class="font-mono">||x + Kv|| &ne; 1</code>. If you renormalize naively after standard Euclidean addition, the uncertainty ellipses warp, covariance geometry becomes invalid, and the filter diverges.
-        </div>
-        <p>
-          To bridge the gap, here is the exact translation from the textbook Kalman filter equations to their spherical counterparts:
-        </p>
-      </div>
-
-      <!-- Rosetta Stone Comparison Table -->
-      <div class="overflow-x-auto border border-slate-800 rounded-xl bg-slate-900/40">
-        <table class="w-full text-left text-xs text-slate-300">
-          <thead class="bg-slate-950/80 text-slate-400 uppercase font-mono border-b border-slate-800 text-[11px]">
-            <tr>
-              <th class="p-3">Kalman Step</th>
-              <th class="p-3 text-slate-400">Standard Kalman Filter (&reals;<sup>n</sup>)</th>
-              <th class="p-3 text-emerald-400">von Mises-Fisher (vMF)</th>
-              <th class="p-3 text-amber-400">Kent Distribution (FB<sub>5</sub>)</th>
-              <th class="p-3 text-cyan-400">Riemannian EKF (S<sup>d-1</sup>)</th>
-            </tr>
-          </thead>
-          <tbody class="divide-y divide-slate-800/60 font-mono text-[11px]">
-            <tr class="hover:bg-slate-800/30">
-              <td class="p-3 font-bold text-white font-sans">State Belief</td>
-              <td class="p-3 text-slate-300">Mean vector x&#770; &isin; &reals;<sup>n</sup></td>
-              <td class="p-3 text-emerald-300">Mean unit vector &mu; &isin; S<sup>d-1</sup></td>
-              <td class="p-3 text-amber-300">Mean unit vector &gamma;<sub>1</sub> &isin; S<sup>2</sup></td>
-              <td class="p-3 text-cyan-300">Mean unit vector &mu; &isin; S<sup>d-1</sup></td>
-            </tr>
-            <tr class="hover:bg-slate-800/30">
-              <td class="p-3 font-bold text-white font-sans">Uncertainty</td>
-              <td class="p-3 text-slate-300">Covariance matrix P &isin; &reals;<sup>n&times;n</sup></td>
-              <td class="p-3 text-emerald-300">Inverse concentration &sigma;<sup>2</sup> &approx; 1/&kappa; &middot; I</td>
-              <td class="p-3 text-amber-300">&sigma;<sub>1</sub><sup>2</sup> &approx; 1/(&kappa;-2&beta;), &sigma;<sub>2</sub><sup>2</sup> &approx; 1/(&kappa;+2&beta;)</td>
-              <td class="p-3 text-cyan-300">Full (d-1) covariance P &isin; &reals;<sup>(d-1)&times;(d-1)</sup></td>
-            </tr>
-            <tr class="hover:bg-slate-800/30">
-              <td class="p-3 font-bold text-white font-sans">Measurement Noise</td>
-              <td class="p-3 text-slate-300">Covariance matrix R</td>
-              <td class="p-3 text-emerald-300">Scalar noise &sigma;<sub>obs</sub><sup>2</sup> &approx; 1/&kappa;<sub>obs</sub></td>
-              <td class="p-3 text-amber-300">Anisotropic noise (&kappa;<sub>obs</sub>, &beta;<sub>obs</sub>)</td>
-              <td class="p-3 text-cyan-300">Tangent noise covariance R</td>
-            </tr>
-            <tr class="hover:bg-slate-800/30">
-              <td class="p-3 font-bold text-white font-sans">Innovation (Residual)</td>
-              <td class="p-3 text-slate-300">v&#771; = y - Hx&#770; (vector difference)</td>
-              <td class="p-3 text-emerald-300">&theta; = arccos(&mu;<sup>T</sup>y) (geodesic angle)</td>
-              <td class="p-3 text-amber-300">Tangent offset v = y - (&gamma;<sub>1</sub><sup>T</sup>y)&gamma;<sub>1</sub></td>
-              <td class="p-3 text-cyan-300">Log-Map: v = Log<sub>&mu;</sub>(y) &isin; T<sub>&mu;</sub></td>
-            </tr>
-            <tr class="hover:bg-slate-800/30">
-              <td class="p-3 font-bold text-white font-sans">Kalman Gain</td>
-              <td class="p-3 text-slate-300">K = P H<sup>T</sup> (H P H<sup>T</sup> + R)<sup>-1</sup></td>
-              <td class="p-3 text-emerald-300">Weight ratio: &kappa;<sub>obs</sub> / (&kappa;<sub>prior</sub> + &kappa;<sub>obs</sub>)</td>
-              <td class="p-3 text-amber-300">Tensor weight in natural basis</td>
-              <td class="p-3 text-cyan-300">Exact tangent gain: K = P(P + R)<sup>-1</sup></td>
-            </tr>
-            <tr class="hover:bg-slate-800/30">
-              <td class="p-3 font-bold text-white font-sans">State Update</td>
-              <td class="p-3 text-slate-300">x&#770; &larr; x&#770; + K v&#771;</td>
-              <td class="p-3 text-emerald-300">&mu; &larr; (&kappa;&mu; + &kappa;<sub>obs</sub>y) / ||&kappa;&mu; + &kappa;<sub>obs</sub>y||</td>
-              <td class="p-3 text-amber-300">&gamma;<sub>1</sub> &larr; &eta;<sub>post</sub> / ||&eta;<sub>post</sub>||</td>
-              <td class="p-3 text-cyan-300">Exp-Map: &mu; &larr; Exp<sub>&mu;</sub>(Kv)</td>
-            </tr>
-            <tr class="hover:bg-slate-800/30">
-              <td class="p-3 font-bold text-white font-sans">Covariance Update</td>
-              <td class="p-3 text-slate-300">P &larr; (I - K) P</td>
-              <td class="p-3 text-emerald-300">&kappa; &larr; ||&kappa;&mu; + &kappa;<sub>obs</sub>y||</td>
-              <td class="p-3 text-amber-300">Tangent projection of A<sub>post</sub></td>
-              <td class="p-3 text-cyan-300">P &larr; &Pi; (I - K) P &Pi;</td>
-            </tr>
-          </tbody>
-        </table>
-      </div>
-
-      <!-- Mental Model Highlights -->
-      <div class="grid grid-cols-1 md:grid-cols-3 gap-3 text-xs">
-        <div class="p-3 rounded-lg bg-emerald-950/20 border border-emerald-900/50">
-          <div class="font-bold text-emerald-400 mb-1">Mental Model: vMF</div>
-          <p class="text-slate-300">
-            A <strong>scalar Kalman filter</strong> running on a sphere. It weights prior and measurement purely by their scalar precisions (&kappa;<sub>prior</sub> vs &kappa;<sub>obs</sub>). Fast and foolproof, but assumes identical noise in every direction.
-          </p>
-        </div>
-        <div class="p-3 rounded-lg bg-amber-950/20 border border-amber-900/50">
-          <div class="font-bold text-amber-400 mb-1">Mental Model: Kent</div>
-          <p class="text-slate-300">
-            A <strong>2D Kalman filter with full 2&times;2 covariance</strong> wrapped onto the surface of a 3D sphere. It can prioritize horizontal over vertical certainty, but cannot scale past 3D.
-          </p>
-        </div>
-        <div class="p-3 rounded-lg bg-cyan-950/20 border border-cyan-900/50">
-          <div class="font-bold text-cyan-400 mb-1">Mental Model: R-EKF</div>
-          <p class="text-slate-300">
-            A <strong>standard textbook N-D Kalman filter</strong> that executes inside the local tangent plane and re-centers its coordinate origin at the moving mean &mu; via the Exponential Map after every step.
-          </p>
-        </div>
-      </div>
-    </section>
-
-    <!-- SECTION 3: von Mises-Fisher -->
-    <section id="vmf" class="space-y-4">
-      <div class="flex items-center gap-2">
-        <span class="text-xs font-mono text-cyan-400 bg-cyan-950 px-2 py-0.5 rounded border border-cyan-800">Section 03</span>
-        <h2 class="text-2xl font-bold text-white">von Mises-Fisher (vMF): The Isotropic Baseline</h2>
-      </div>
-
-      <div class="bg-slate-900/50 border border-slate-800 rounded-xl p-5 space-y-3 text-sm text-slate-300">
-        <p>
-          The vMF distribution is parameterized by a mean direction vector <code class="text-emerald-400">&mu; &isin; S<sup>d-1</sup></code> and a single scalar concentration <code class="text-emerald-400">&kappa; &ge; 0</code>:
-        </p>
-        <div class="p-3 bg-black/40 rounded border border-slate-800 font-mono text-xs text-center text-cyan-300">
-          f(x; &mu;, &kappa;) = C<sub>d</sub>(&kappa;) &middot; exp(&kappa; &mu;<sup>T</sup> x)
-        </div>
-        <p>
-          Because density depends <strong>strictly on the inner product &mu;<sup>T</sup>x = cos(&theta;)</strong>, the dispersion is rotationally symmetric. A (1 - &alpha;) credible region is always a perfect spherical cap with angular radius:
-        </p>
-        <div class="p-3 bg-black/40 rounded border border-slate-800 font-mono text-xs text-center text-slate-300">
-          cos(&theta;<sub>&alpha;</sub>) = 1 + (1 / &kappa;) &middot; ln(&alpha; + (1 - &alpha;)e<sup>-2&kappa;</sup>) &nbsp;&implies;&nbsp; &theta;<sub>95%</sub> &approx; &radic;(5.99 / &kappa;) radians
-        </div>
-        <p>
-          <strong>Bayesian Update Rule:</strong> The natural parameter vector is <code class="text-cyan-300">&eta; = &kappa; &mu;</code>. When an observation <code class="text-amber-400">y<sub>t</sub></code> arrives with observation confidence <code class="text-amber-400">&kappa;<sub>obs</sub></code>:
-        </p>
-        <div class="p-3 bg-black/40 rounded border border-slate-800 font-mono text-xs text-center text-emerald-300">
-          &eta;<sub>t</sub> = &eta;<sub>t-1</sub> + &kappa;<sub>obs</sub> y<sub>t</sub> &emsp;&emsp;
-          &kappa;<sub>t</sub> = ||&eta;<sub>t</sub>||, &emsp; &mu;<sub>t</sub> = &eta;<sub>t</sub> / &kappa;<sub>t</sub>
-        </div>
-      </div>
-
-      <!-- Interactive Widget 1: vMF -->
-      <div class="border border-slate-800 bg-slate-950 rounded-xl p-4 shadow-xl">
-        <div class="flex justify-between items-center pb-2 border-b border-slate-800 mb-3">
-          <div>
-            <h3 class="font-semibold text-sm text-white">Interactive Lab 1: vMF Bayesian Filter (3D)</h3>
-            <p class="text-xs text-slate-400">Rotate the sphere with your mouse. Adjust &kappa;<sub>obs</sub> to see the pull and cone shrinkage.</p>
-          </div>
-          <span id="vmfStepBadge" class="text-xs font-mono px-2 py-0.5 rounded bg-emerald-950 text-emerald-400 border border-emerald-800">Step: 0</span>
-        </div>
-
-        <div class="grid grid-cols-1 md:grid-cols-12 gap-3">
-          <div class="md:col-span-7">
-            <div class="relative w-full h-[220px] rounded-lg bg-black/80 border border-slate-800 overflow-hidden flex items-center justify-center">
-              <canvas id="canvasVmf" width="420" height="220" class="w-full h-full block"></canvas>
-              <div class="absolute bottom-1.5 left-2 text-[10px] font-mono bg-black/80 px-2 py-0.5 rounded text-white/90">
-                <span class="inline-block w-2 h-2 rounded-full bg-emerald-400 mr-1"></span>&mu; Mean
-                <span class="inline-block w-2 h-2 rounded-full bg-amber-400 ml-1.5 mr-1"></span>y<sub>t</sub> Obs
-                <span class="inline-block w-2 h-2 border border-cyan-400 rounded-full ml-1.5 mr-1"></span>95% Cone
-              </div>
-            </div>
-          </div>
-
-          <div class="md:col-span-5 flex flex-col justify-between space-y-2 text-xs">
-            <div class="grid grid-cols-3 gap-1.5 text-center font-mono text-[10px]">
-              <div class="p-1.5 rounded bg-slate-900 border border-slate-800">
-                <div class="text-slate-400 text-[9px]">Filter &kappa;<sub>t</sub></div>
-                <div id="vmfStatKappa" class="text-emerald-400 font-bold text-xs mt-0.5">5.0</div>
-              </div>
-              <div class="p-1.5 rounded bg-slate-900 border border-slate-800">
-                <div class="text-slate-400 text-[9px]">95% Cone</div>
-                <div id="vmfStatRadius" class="text-cyan-400 font-bold text-xs mt-0.5">45.0&deg;</div>
-              </div>
-              <div class="p-1.5 rounded bg-slate-900 border border-slate-800">
-                <div class="text-slate-400 text-[9px]">Last &kappa;<sub>obs</sub></div>
-                <div id="vmfStatLastObs" class="text-amber-400 font-bold text-xs mt-0.5">-</div>
-              </div>
-            </div>
-
-            <div class="p-2 rounded bg-slate-900 border border-slate-800 space-y-1">
-              <div class="flex justify-between text-[11px]">
-                <span class="text-slate-400">Next Obs Confidence (&kappa;<sub>obs</sub>):</span>
-                <span id="vmfValSlider" class="font-mono text-amber-400 font-bold">8.0</span>
-              </div>
-              <input id="vmfSliderKappa" type="range" min="0.5" max="25" step="0.5" value="8.0" class="w-full h-1 bg-black rounded cursor-pointer">
-            </div>
-
-            <div class="flex gap-1.5">
-              <button id="vmfBtnStep" class="flex-1 py-1.5 px-2 rounded bg-emerald-600 hover:bg-emerald-500 text-white font-medium text-xs transition">
-                + Add Obs
-              </button>
-              <button id="vmfBtnNoisy" class="py-1.5 px-2 rounded border border-amber-600/40 text-amber-400 hover:bg-amber-950/30 text-xs transition">
-                Noisy (&kappa;=1)
-              </button>
-              <button id="vmfBtnReset" class="py-1.5 px-2 rounded border border-slate-700 text-slate-400 hover:bg-slate-800 text-xs transition">
-                Reset
-              </button>
-            </div>
-          </div>
-        </div>
-      </div>
-    </section>
-
-    <!-- SECTION 4: Kent Distribution -->
-    <section id="kent" class="space-y-4">
-      <div class="flex items-center gap-2">
-        <span class="text-xs font-mono text-cyan-400 bg-cyan-950 px-2 py-0.5 rounded border border-cyan-800">Section 04</span>
-        <h2 class="text-2xl font-bold text-white">Kent Distribution (FB<sub>5</sub>): Directional Anisotropy</h2>
-      </div>
-
-      <div class="bg-slate-900/50 border border-slate-800 rounded-xl p-5 space-y-3 text-sm text-slate-300">
-        <p>
-          When viewing an object from consecutive camera angles (e.g. orbiting around azimuth), the uncertainty is <strong>anisotropic</strong>: large variance along the camera motion path, but small variance orthogonal to it.
+          In our aerial multi-target tracking pipeline, target belief states must track not only 3D kinematics (position, velocity, heading) from cropped detector bounding boxes, but also <strong class="text-white">visual identity embeddings</strong> on the unit hypersphere (<code class="text-cyan-300">y &isin; S<sup>d-1</sup></code>).
         </p>
         <p>
-          The Kent distribution (FB<sub>5</sub>) models this via 5 parameters: orthonormal axes <code class="text-cyan-300">&gamma;<sub>1</sub>, &gamma;<sub>2</sub>, &gamma;<sub>3</sub></code>, concentration <code class="text-emerald-400">&kappa;</code>, and ovalness <code class="text-amber-400">&beta;</code> (<code class="text-amber-300">0 &le; 2&beta; &lt; &kappa;</code>):
-        </p>
-        <div class="p-3 bg-black/40 rounded border border-slate-800 font-mono text-xs text-center text-cyan-300">
-          f(x) &prop; exp(&kappa; &gamma;<sub>1</sub><sup>T</sup>x + &beta; [(&gamma;<sub>2</sub><sup>T</sup>x)<sup>2</sup> - (&gamma;<sub>3</sub><sup>T</sup>x)<sup>2</sup>])
-        </div>
-        <p>
-          In the tangent plane, the two orthogonal variances are:
-        </p>
-        <div class="p-3 bg-black/40 rounded border border-slate-800 font-mono text-xs text-center text-slate-300">
-          &sigma;<sub>major</sub><sup>2</sup> &approx; 1 / (&kappa; - 2&beta;), &emsp;&emsp; &sigma;<sub>minor</sub><sup>2</sup> &approx; 1 / (&kappa; + 2&beta;)
-        </div>
-        <p>
-          <strong>Observation Noise Characterization:</strong> An observation from camera viewpoint <code class="text-amber-400">y<sub>t</sub></code> arrives with its own major noise axis (e.g. motion blur) and ovalness <code class="text-amber-400">&beta;<sub>obs</sub></code>. The conjugate update sums natural linear and quadratic matrices:
-          <code class="text-emerald-300">&eta;<sub>post</sub> = &eta; + &eta;<sub>obs</sub></code> and 
-          <code class="text-emerald-300">A<sub>post</sub> = A + A<sub>obs</sub></code>, then projects <code class="text-cyan-300">A<sub>post</sub></code> onto the tangent plane of the new mean to extract the new elliptical axes.
-        </p>
-      </div>
-
-      <!-- Interactive Widget 2: Kent -->
-      <div class="border border-slate-800 bg-slate-950 rounded-xl p-4 shadow-xl">
-        <div class="flex justify-between items-center pb-2 border-b border-slate-800 mb-3">
-          <div>
-            <h3 class="font-semibold text-sm text-white">Interactive Lab 2: Kent Observation Noise Shaping</h3>
-            <p class="text-xs text-slate-400">Freely shape the observation placement and noise profile. Watch the live emerald posterior preview.</p>
-          </div>
-          <div class="flex gap-1.5 font-mono text-[10px]">
-            <span class="px-2 py-0.5 rounded bg-cyan-950 text-cyan-300 border border-cyan-800">Prior</span>
-            <span class="px-2 py-0.5 rounded bg-amber-950 text-amber-300 border border-amber-800">Obs Footprint</span>
-            <span class="px-2 py-0.5 rounded bg-emerald-950 text-emerald-300 border border-emerald-800">Posterior Preview</span>
-          </div>
-        </div>
-
-        <div class="grid grid-cols-1 md:grid-cols-12 gap-3">
-          <div class="md:col-span-7">
-            <div class="relative w-full h-[225px] rounded-lg bg-black/80 border border-slate-800 overflow-hidden flex items-center justify-center">
-              <canvas id="canvasKent" width="420" height="225" class="w-full h-full block"></canvas>
-            </div>
-            <!-- Card stats -->
-            <div class="grid grid-cols-3 gap-1.5 mt-2 text-[10px] font-mono">
-              <div class="p-1.5 rounded bg-slate-900 border border-slate-800">
-                <div class="text-cyan-400 font-bold">Prior</div>
-                <div id="kentStatPrior" class="text-slate-400">&kappa;: 8.0 | &beta;: 0.0</div>
-                <div id="kentStatPriorAxes" class="text-white">50&deg; &times; 50&deg;</div>
-              </div>
-              <div class="p-1.5 rounded bg-slate-900 border border-slate-800">
-                <div class="text-amber-400 font-bold">Observation</div>
-                <div id="kentStatObs" class="text-slate-400">&kappa;: 12.0 | &beta;: 4.5</div>
-                <div id="kentStatObsAxes" class="text-white">81&deg; &times; 31&deg;</div>
-              </div>
-              <div class="p-1.5 rounded bg-slate-900 border border-slate-800">
-                <div class="text-emerald-400 font-bold">Posterior</div>
-                <div id="kentStatPost" class="text-slate-400">&kappa;: 19.4 | &beta;: 4.1</div>
-                <div id="kentStatPostAxes" class="text-white">44&deg; &times; 28&deg;</div>
-              </div>
-            </div>
-          </div>
-
-          <div class="md:col-span-5 flex flex-col justify-between space-y-2 text-xs">
-            <div class="p-2 rounded bg-slate-900 border border-slate-800 space-y-1.5">
-              <div class="text-[11px] font-semibold text-slate-300">1. Obs Placement</div>
-              <div class="flex justify-between text-[10px] text-slate-400">
-                <span>Distance: <span id="kentValDist" class="text-amber-400">20&deg;</span></span>
-                <span>Bearing: <span id="kentValBearing" class="text-amber-400">45&deg;</span></span>
-              </div>
-              <input id="kentSliderDist" type="range" min="0" max="50" value="20" class="w-full h-1 bg-black rounded cursor-pointer">
-              <input id="kentSliderBearing" type="range" min="0" max="360" value="45" class="w-full h-1 bg-black rounded cursor-pointer">
-            </div>
-
-            <div class="p-2 rounded bg-slate-900 border border-slate-800 space-y-1.5">
-              <div class="text-[11px] font-semibold text-slate-300">2. Noise Anisotropy (Shape)</div>
-              <div class="flex justify-between text-[10px] text-slate-400">
-                <span>&beta;<sub>obs</sub> (Ovalness): <span id="kentValBeta" class="text-amber-400">4.5</span></span>
-                <span>Tilt: <span id="kentValPsi" class="text-cyan-400">30&deg;</span></span>
-              </div>
-              <input id="kentSliderBeta" type="range" min="0" max="5.5" step="0.2" value="4.5" class="w-full h-1 bg-black rounded cursor-pointer">
-              <input id="kentSliderPsi" type="range" min="0" max="180" step="5" value="30" class="w-full h-1 bg-black rounded cursor-pointer">
-            </div>
-
-            <div class="flex gap-1 text-[10px]">
-              <button id="kentPreHoriz" class="flex-1 py-1 px-1 rounded bg-slate-800 hover:border-amber-400 border border-transparent truncate">Horiz Blur</button>
-              <button id="kentPreVert" class="flex-1 py-1 px-1 rounded bg-slate-800 hover:border-amber-400 border border-transparent truncate">Vert Slit</button>
-              <button id="kentPreVmf" class="flex-1 py-1 px-1 rounded bg-slate-800 hover:border-cyan-400 border border-transparent truncate">vMF Circle</button>
-            </div>
-
-            <div class="flex gap-1.5">
-              <button id="kentBtnCommit" class="flex-1 py-1.5 px-2 rounded bg-emerald-600 hover:bg-emerald-500 text-white font-medium text-xs transition">
-                &check; Commit Posterior
-              </button>
-              <button id="kentBtnReset" class="py-1.5 px-2 rounded border border-slate-700 text-slate-400 hover:bg-slate-800 text-xs transition">
-                Reset
-              </button>
-            </div>
-          </div>
-        </div>
-      </div>
-    </section>
-
-    <!-- SECTION 5: Riemannian EKF -->
-    <section id="rekf" class="space-y-4">
-      <div class="flex items-center gap-2">
-        <span class="text-xs font-mono text-cyan-400 bg-cyan-950 px-2 py-0.5 rounded border border-cyan-800">Section 05</span>
-        <h2 class="text-2xl font-bold text-white">Riemannian EKF for 128D+ Hypersphere Embeddings</h2>
-      </div>
-
-      <div class="bg-slate-900/50 border border-slate-800 rounded-xl p-5 space-y-3 text-sm text-slate-300">
-        <p>
-          While the Kent distribution is mathematically elegant, it cannot scale past 3D because normalizing the matrix exponential in <code class="text-cyan-300">d = 128</code> is intractable.
+          Over recent months, we relied on a <strong class="text-emerald-400">von Mises-Fisher (vMF)</strong> distribution. While mathematically clean, vMF has a fundamental flaw: <strong class="text-amber-400">it is strictly isotropic</strong>. A single scalar concentration parameter <code class="text-emerald-300">&kappa;</code> forces uncertainty to be rotationally symmetric and identical across all 128 dimensions.
         </p>
         <p>
-          <strong>The Production Solution:</strong> The <strong>Riemannian Extended Kalman Filter (R-EKF)</strong>. Instead of trying to maintain a closed-form distribution across the curved manifold, it maps the state to the local Euclidean tangent space <code class="text-cyan-300">T<sub>&mu;</sub>S<sup>d-1</sup> &cong; R<sup>d-1</sup></code>:
+          In our tracker, we already possess kinematic estimates of the target's 3D pose, UAS camera gimbal angles, and relative viewing geometry (azimuth <code class="text-cyan-300">&phi;</code>, elevation <code class="text-cyan-300">&theta;</code>). Forcing this rich physical knowledge through a single scalar &kappa; wastes information:
         </p>
         <ul class="list-disc pl-5 space-y-1.5 text-xs text-slate-400 font-mono">
-          <li><strong>Step 1 (Log Map):</strong> Project incoming unit vector y to tangent innovation: <code class="text-rose-400">v = Log<sub>&mu;</sub>(y) = (&theta; / sin &theta;)(y - cos &theta; &mu;)</code>.</li>
-          <li><strong>Step 2 (Kalman Update):</strong> Perform a standard Kalman update on the (d-1) plane: <code class="text-cyan-400">K = P(P + R)<sup>-1</sup>, &delta; = Kv</code>.</li>
-          <li><strong>Step 3 (Exp Map):</strong> Retract the updated vector back to the unit sphere: <code class="text-emerald-400">&mu;<sub>new</sub> = Exp<sub>&mu;</sub>(&delta;)</code>.</li>
-          <li><strong>Step 4 (Covariance Retraction):</strong> Transport <code class="text-purple-400">P<sub>new</sub> = &Pi; (I - K) P &Pi;</code>.</li>
+          <li><strong>Viewpoint Smear:</strong> When our UAS circles or climbs over a vehicle, viewpoint-induced appearance shifts cause the isotropic filter to either <em class="text-rose-400">over-adapt</em> (eroding invariant identity features) or <em class="text-rose-400">under-adapt</em> (triggering false track drops in MHT gating).</li>
+          <li><strong>The Core Objective:</strong> We want to choose an embedding method—whether that is <strong class="text-white">Embedding Gamma 2</strong>, <strong class="text-white">DINO</strong>, or <strong class="text-white">CLIP</strong>—and establish a reasonable, <strong>physics-informed noise calibration</strong> based on our sensor and flight models so that observation noise appropriately impacts the visual embedding state.</li>
         </ul>
-        <p>
-          <strong>Computational Cost in 128D:</strong> The tangent covariance matrix <code class="text-emerald-400">P</code> is <code class="text-emerald-300">127 &times; 127</code> Float32 (64.5 KB). A full matrix solve takes <strong>under 0.05 milliseconds</strong> on a standard CPU thread (&gt;20,000 updates/sec).
-        </p>
+      </div>
+    </section>
+
+    <!-- SECTION 2: The Architectural Arc -->
+    <section class="space-y-4">
+      <div class="flex items-center gap-2">
+        <span class="text-xs font-mono text-cyan-400 bg-cyan-950 px-2 py-0.5 rounded border border-cyan-800">Architecture</span>
+        <h2 class="text-2xl font-bold text-white">The Architectural Arc: Evolution of the Filter</h2>
       </div>
 
-      <!-- Interactive Widget 3: R-EKF -->
-      <div class="border border-slate-800 bg-slate-950 rounded-xl p-4 shadow-xl">
-        <div class="flex justify-between items-center pb-2 border-b border-slate-800 mb-3">
+      <div class="grid grid-cols-1 md:grid-cols-4 gap-3 text-xs">
+        <!-- Phase 1 -->
+        <div class="p-4 rounded-xl bg-slate-900/60 border border-slate-800 space-y-2 flex flex-col justify-between">
           <div>
-            <h3 class="font-semibold text-sm text-white">Interactive Lab 3: Riemannian EKF Tangent Space Mechanics</h3>
-            <p class="text-xs text-slate-400">See the flat tangent plane T<sub>&mu;</sub> resting on the 3D sphere. Toggle dimension benchmark below.</p>
+            <div class="text-[10px] font-mono text-slate-400 uppercase tracking-wider">Phase 01 &bull; Baseline</div>
+            <h3 class="font-bold text-emerald-400 text-sm mt-0.5">von Mises-Fisher (vMF)</h3>
+            <p class="text-slate-400 text-[11px] mt-1.5">
+              Circular uncertainty cone governed by single scalar &kappa;. Viewpoint-blind; cannot accommodate camera orbit drift without inflating variance across invariant identity dimensions.
+            </p>
           </div>
-          <div class="flex gap-1 font-mono text-[10px]">
-            <button id="dimBtn3" class="px-2 py-0.5 rounded border border-slate-700 bg-slate-900">3D</button>
-            <button id="dimBtn128" class="px-2 py-0.5 rounded border border-emerald-500 bg-emerald-950 text-emerald-300 font-bold">128D</button>
-            <button id="dimBtn512" class="px-2 py-0.5 rounded border border-slate-700 bg-slate-900">512D</button>
+          <div class="pt-2 border-t border-slate-800/80 text-[10px] font-mono text-slate-400">
+            Contour: Strictly Circular
           </div>
         </div>
 
-        <div class="grid grid-cols-1 md:grid-cols-12 gap-3">
-          <div class="md:col-span-7">
-            <div class="relative w-full h-[225px] rounded-lg bg-black/80 border border-slate-800 overflow-hidden flex items-center justify-center">
-              <canvas id="canvasRekf" width="420" height="225" class="w-full h-full block"></canvas>
-              <div class="absolute bottom-1.5 left-2 text-[10px] font-mono bg-black/80 px-2 py-0.5 rounded text-white/90">
-                <span class="inline-block w-2 h-2 rounded-full bg-emerald-400 mr-1"></span>&mu; Mean
-                <span class="inline-block w-2.5 h-1.5 border border-cyan-400 bg-cyan-400/20 mr-1"></span>Tangent T<sub>&mu;</sub>
-                <span class="inline-block w-2 h-0.5 bg-rose-400 mr-1"></span>v = Log(y)
-              </div>
-            </div>
-
-            <!-- Benchmark stats -->
-            <div class="mt-2 p-2 rounded bg-slate-900 border border-slate-800 text-[10px] font-mono">
-              <div class="flex justify-between text-slate-400 mb-1">
-                <span id="rekfBenchTitle" class="text-emerald-400 font-bold">128D Hypersphere Profile</span>
-                <span>Tangent Dim: <span id="rekfBenchDim" class="text-white">127</span></span>
-              </div>
-              <div class="grid grid-cols-3 gap-1.5 text-center">
-                <div class="p-1 rounded bg-black/40 border border-slate-800">
-                  <div class="text-slate-400 text-[9px]">Memory</div>
-                  <div id="rekfBenchMem" class="text-emerald-300 font-bold">64.5 KB</div>
-                </div>
-                <div class="p-1 rounded bg-black/40 border border-slate-800">
-                  <div class="text-slate-400 text-[9px]">FLOPs/Update</div>
-                  <div id="rekfBenchFlops" class="text-cyan-300 font-bold">~2.0 MFLOPs</div>
-                </div>
-                <div class="p-1 rounded bg-black/40 border border-slate-800">
-                  <div class="text-slate-400 text-[9px]">CPU Latency</div>
-                  <div id="rekfBenchLat" class="text-amber-300 font-bold">&lt; 0.05 ms</div>
-                </div>
-              </div>
-            </div>
+        <!-- Phase 2 -->
+        <div class="p-4 rounded-xl bg-slate-900/60 border border-slate-800 space-y-2 flex flex-col justify-between">
+          <div>
+            <div class="text-[10px] font-mono text-slate-400 uppercase tracking-wider">Phase 02 &bull; Viable Models</div>
+            <h3 class="font-bold text-amber-400 text-sm mt-0.5">Kent Distribution (FB<sub>5</sub>)</h3>
+            <p class="text-slate-400 text-[11px] mt-1.5">
+              Explored true spherical analogue to a full Gaussian, allowing elliptical contours on S<sup>2</sup>. Proved directional concept, but hit severe computational bottlenecks in 128D (hypergeometric normalizers).
+            </p>
           </div>
+          <div class="pt-2 border-t border-slate-800/80 text-[10px] font-mono text-slate-400">
+            Contour: Elliptical (3D only)
+          </div>
+        </div>
 
-          <div class="md:col-span-5 flex flex-col justify-between space-y-2 text-xs">
-            <div class="p-2 rounded bg-slate-900 border border-slate-800 space-y-1.5">
-              <div class="text-[11px] font-semibold text-slate-300">Embedding Manifold & Anisotropy Controls</div>
-              
-              <div class="flex justify-between text-[10px] text-slate-400">
-                <span>Latent Innovation ||v||: <span id="rekfValDist" class="text-amber-400">30&deg;</span></span>
-              </div>
-              <input id="rekfSliderDist" type="range" min="2" max="75" value="30" class="w-full h-1 bg-black rounded cursor-pointer">
+        <!-- Phase 3 -->
+        <div class="p-4 rounded-xl bg-slate-900/60 border border-slate-800 space-y-2 flex flex-col justify-between">
+          <div>
+            <div class="text-[10px] font-mono text-slate-400 uppercase tracking-wider">Phase 03 &bull; Production Engine</div>
+            <h3 class="font-bold text-cyan-400 text-sm mt-0.5">Riemannian EKF (R-EKF)</h3>
+            <p class="text-slate-400 text-[11px] mt-1.5">
+              Investigated scalable production implementation. Transposes filtering to Euclidean tangent space T<sub>&mu;</sub>S<sup>d-1</sup> with Log/Exp maps. Supports full anisotropic covariance in &lt;0.05 ms.
+            </p>
+          </div>
+          <div class="pt-2 border-t border-slate-800/80 text-[10px] font-mono text-slate-400">
+            Scalability: 128D / 512D / 768D
+          </div>
+        </div>
 
-              <div class="flex justify-between text-[10px] text-slate-400 mt-2">
-                <span>Latent Anisotropy Ratio (&lambda;<sub>maj</sub> / &lambda;<sub>min</sub>): <span id="rekfValAniso" class="text-cyan-400 font-bold">25x</span></span>
-              </div>
-              <input id="rekfSliderAniso" type="range" min="1" max="60" step="1" value="25" class="w-full h-1 bg-black rounded cursor-pointer">
-
-              <!-- Live Axis Readout -->
-              <div class="grid grid-cols-2 gap-1 text-[9px] font-mono mt-1 text-center">
-                <div class="p-1 rounded bg-black/40 text-slate-400">Ambiguous Axis: <span id="rekfStatMaj" class="text-emerald-400 font-bold">42&deg;</span></div>
-                <div class="p-1 rounded bg-black/40 text-slate-400">Invariant Axis: <span id="rekfStatMin" class="text-cyan-400 font-bold">4&deg;</span></div>
-              </div>
-            </div>
-
-            <!-- Presets for Embedding Space Latent Structures -->
-            <div class="flex gap-1 text-[10px]">
-              <button id="rekfPreRibbon" class="flex-1 py-1 px-1 rounded bg-slate-800 hover:border-emerald-400 border border-transparent truncate">Extreme Ribbon (50x)</button>
-              <button id="rekfPreDrift" class="flex-1 py-1 px-1 rounded bg-slate-800 hover:border-cyan-400 border border-transparent truncate">Latent Drift (20x)</button>
-              <button id="rekfPreIso" class="flex-1 py-1 px-1 rounded bg-slate-800 hover:border-slate-500 border border-transparent truncate">Isotropic (1x)</button>
-            </div>
-
-            <div class="p-2 rounded bg-slate-900/60 border border-slate-800 text-[10px] text-slate-400 space-y-1">
-              <div class="font-bold text-slate-300">Embedding Insight:</div>
-              <p>The green contour wraps directly along the manifold surface as an elongated hyper-ribbon. This allows tracking embeddings that drift freely along nuisance feature axes while remaining pinned tightly along invariant identity axes.</p>
-            </div>
-
-            <div class="flex gap-1.5">
-              <button id="rekfBtnStep" class="flex-1 py-1.5 px-2 rounded bg-emerald-600 hover:bg-emerald-500 text-white font-medium text-xs transition">
-                &check; Step 1 Update
-              </button>
-              <button id="rekfBtnReset" class="py-1.5 px-2 rounded border border-slate-700 text-slate-400 hover:bg-slate-800 text-xs transition">
-                Reset
-              </button>
-            </div>
+        <!-- Phase 4 -->
+        <div class="p-4 rounded-xl bg-slate-900/60 border border-slate-800 space-y-2 flex flex-col justify-between">
+          <div>
+            <div class="text-[10px] font-mono text-slate-400 uppercase tracking-wider">Phase 04 &bull; Calibration</div>
+            <h3 class="font-bold text-emerald-300 text-sm mt-0.5">Tangent PLS Calibration</h3>
+            <p class="text-slate-400 text-[11px] mt-1.5">
+              Current milestone. Uses synthetic vehicle datasets and UAS telemetry errors to construct calibrated, directional observation noise matrices R<sub>t</sub> directly on the tangent plane.
+            </p>
+          </div>
+          <div class="pt-2 border-t border-slate-800/80 text-[10px] font-mono text-slate-400">
+            Output: Physically Grounded R<sub>t</sub>
           </div>
         </div>
       </div>
     </section>
 
-    <!-- SECTION 6: Decision Guide -->
-    <section id="guidelines" class="space-y-4">
+    <!-- SECTION 3: Guide to the Documentation & Interactive Modules -->
+    <section class="space-y-4">
       <div class="flex items-center gap-2">
-        <span class="text-xs font-mono text-cyan-400 bg-cyan-950 px-2 py-0.5 rounded border border-cyan-800">Section 06</span>
-        <h2 class="text-2xl font-bold text-white">Production Decision Guide</h2>
+        <span class="text-xs font-mono text-cyan-400 bg-cyan-950 px-2 py-0.5 rounded border border-cyan-800">Site Modules</span>
+        <h2 class="text-2xl font-bold text-white">Interactive Modules Overview</h2>
       </div>
 
-      <div class="grid grid-cols-1 md:grid-cols-3 gap-4 text-xs">
-        <div class="p-4 rounded-xl bg-slate-900/60 border border-slate-800 space-y-2">
-          <h3 class="font-bold text-emerald-400 text-sm">Choose vMF when:</h3>
-          <ul class="list-disc pl-4 space-y-1 text-slate-300">
-            <li>You only have a scalar confidence per frame (e.g., MagFace norm ||z|| or detector score).</li>
-            <li>You want ultra-minimal computation (&lt;100 FLOPs per frame).</li>
-            <li>Camera viewpoints change randomly without a dominant motion axis.</li>
-          </ul>
-        </div>
-        <div class="p-4 rounded-xl bg-slate-900/60 border border-slate-800 space-y-2">
-          <h3 class="font-bold text-amber-400 text-sm">Choose Kent (FB<sub>5</sub>) when:</h3>
-          <ul class="list-disc pl-4 space-y-1 text-slate-300">
-            <li>Your embedding/state is explicitly in 3D (e.g., camera orientation, 3D surface normal, magnetic vector).</li>
-            <li>You have clear anisotropic noise (e.g., azimuth vs elevation blur).</li>
-            <li>You need exact closed-form directional statistics on S<sup>2</sup>.</li>
-          </ul>
-        </div>
-        <div class="p-4 rounded-xl bg-slate-900/60 border border-slate-800 space-y-2">
-          <h3 class="font-bold text-cyan-400 text-sm">Choose Riemannian EKF when:</h3>
-          <ul class="list-disc pl-4 space-y-1 text-slate-300">
-            <li>Your embedding dimension is high (d = 128, 256, 512, 768).</li>
-            <li>Different feature semantic dimensions have unequal reliability.</li>
-            <li>You want full anisotropic covariance without matrix normalization bottlenecks.</li>
-          </ul>
-        </div>
+      <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+        <!-- Card Module 1 -->
+        <a href="fundamentals.html" class="group p-5 rounded-xl bg-slate-900/60 border border-slate-800 hover:border-cyan-500/60 transition space-y-3 block">
+          <div class="flex justify-between items-center">
+            <span class="text-xs font-mono text-cyan-400 bg-cyan-950 px-2 py-0.5 rounded border border-cyan-800">Module 01</span>
+            <span class="text-xs font-mono text-slate-400 group-hover:text-cyan-300 transition">&rarr; Open Module</span>
+          </div>
+          <h3 class="text-lg font-bold text-white group-hover:text-cyan-300 transition">Filtering Fundamentals &amp; 3D Interactive Labs</h3>
+          <p class="text-xs text-slate-400 leading-normal">
+            Covers the mathematical foundations of directional statistics: the <strong>Kalman Filter Rosetta Stone</strong>, hands-on 3D trackball simulators for vMF, Kent, and the Riemannian EKF, plus drop-in Python classes.
+          </p>
+          <div class="pt-2 border-t border-slate-800/60 flex gap-2 text-[10px] font-mono text-slate-400">
+            <span>&bull; vMF Simulator</span>
+            <span>&bull; Kent Lab</span>
+            <span>&bull; R-EKF Mechanics</span>
+            <span>&bull; Python Appendix</span>
+          </div>
+        </a>
+
+        <!-- Card Module 2 -->
+        <a href="calibration.html" class="group p-5 rounded-xl bg-slate-900/60 border border-slate-800 hover:border-emerald-500/60 transition space-y-3 block">
+          <div class="flex justify-between items-center">
+            <span class="text-xs font-mono text-emerald-400 bg-emerald-950 px-2 py-0.5 rounded border border-emerald-800">Module 02</span>
+            <span class="text-xs font-mono text-slate-400 group-hover:text-emerald-300 transition">&rarr; Open Module</span>
+          </div>
+          <h3 class="text-lg font-bold text-white group-hover:text-emerald-300 transition">Viewpoint Noise Calibration &amp; Tangent PLS</h3>
+          <p class="text-xs text-slate-400 leading-normal">
+            Derives the error propagation bridge from UAS flight telemetry to 127D tangent space covariance <code class="text-emerald-400">R<sub>t</sub></code>. Directly contrasts <strong>Within-Class Tangent PCA</strong> vs. <strong>Tangent PLS</strong> with live 3D noise ellipsoids.
+          </p>
+          <div class="pt-2 border-t border-slate-800/60 flex gap-2 text-[10px] font-mono text-slate-400">
+            <span>&bull; Error Propagation</span>
+            <span>&bull; WC-TPCA vs T-PLS</span>
+            <span>&bull; 3D Noise Lab</span>
+            <span>&bull; Calibration Code</span>
+          </div>
+        </a>
       </div>
     </section>
 
-    <!-- APPENDIX: Python Code -->
-    <section id="appendix" class="space-y-6 pt-4 border-t border-slate-800">
+    <!-- SECTION 4: Proposed Investigations for the Engineering Team -->
+    <section class="space-y-4">
       <div class="flex items-center gap-2">
-        <span class="text-xs font-mono text-cyan-400 bg-cyan-950 px-2 py-0.5 rounded border border-cyan-800">Appendix</span>
-        <h2 class="text-2xl font-bold text-white">Production Python Implementations</h2>
+        <span class="text-xs font-mono text-cyan-400 bg-cyan-950 px-2 py-0.5 rounded border border-cyan-800">Next Steps</span>
+        <h2 class="text-2xl font-bold text-white">Proposed Investigations for the Engineering Team</h2>
       </div>
 
-      <!-- Code 1: vMF -->
-      <div class="space-y-2">
-        <h3 class="text-sm font-bold text-emerald-400 font-mono">1. von Mises-Fisher Bayesian Filter (Any Dimension)</h3>
-        <pre><code class="language-python text-xs text-slate-300 p-4 block">import numpy as np
+      <div class="bg-slate-900/60 border border-slate-800 rounded-xl p-5 space-y-4 text-xs text-slate-300">
+        <p class="text-slate-400">
+          Before locking the tracker configuration into flight software, we are tasking the research team with the following simulation investigations using our synthetic vehicle dataset:
+        </p>
 
-class VMFFilter:
-    """
-    von Mises-Fisher Bayesian filter on S^{d-1}.
-    Tracks mean vector mu and concentration kappa via natural vector eta = kappa * mu.
-    """
-    def __init__(self, dim=128, mu_prior=None, kappa_prior=5.0):
-        self.d = dim
-        if mu_prior is None:
-            self.mu = np.zeros(dim); self.mu[0] = 1.0
-        else:
-            self.mu = mu_prior / np.linalg.norm(mu_prior)
-        self.kappa = float(kappa_prior)
-        self.eta = self.kappa * self.mu
+        <div class="grid grid-cols-1 md:grid-cols-3 gap-3">
+          <div class="p-3.5 rounded-lg bg-black/40 border border-slate-800 space-y-1.5">
+            <span class="font-bold text-amber-400 block text-xs">Investigation 1: WC-TPCA vs. T-PLS</span>
+            <p class="text-slate-400 text-[11px]">
+              Run both calibration routines on our synthetic car render bank. Evaluate the scree plot of eigenvalues (WC-TPCA) versus the cross-validation R<sup>2</sup> score of pose recovery (Tangent PLS). Measure Grassmannian subspace angle to check for diagonal cross-axis mixing.
+            </p>
+          </div>
 
-    def predict(self, decay_factor=0.98):
-        """Optional motion dispersion / uncertainty growth."""
-        self.eta *= decay_factor
-        self.kappa = np.linalg.norm(self.eta)
-        self.mu = self.eta / max(self.kappa, 1e-7)
+          <div class="p-3.5 rounded-lg bg-black/40 border border-slate-800 space-y-1.5">
+            <span class="font-bold text-cyan-400 block text-xs">Investigation 2: Cross-Backbone Comparison</span>
+            <p class="text-slate-400 text-[11px]">
+              Apply the Tangent PLS calibration pipeline across our candidate models: <strong class="text-white">Embedding Gamma 2</strong> (128D), <strong class="text-white">DINO / DINOv2</strong> (384D / 768D), and <strong class="text-white">CLIP</strong> (512D). Evaluate which manifold provides the cleanest separation between viewpoint drift and identity invariance.
+            </p>
+          </div>
 
-    def update(self, y_obs, kappa_obs):
-        """Conjugate Bayesian update: eta_t = eta_{t-1} + kappa_obs * y_obs."""
-        y_obs = y_obs / np.linalg.norm(y_obs)
-        self.eta += kappa_obs * y_obs
-        self.kappa = np.linalg.norm(self.eta)
-        self.mu = self.eta / self.kappa
-        return self.mu, self.kappa
-</code></pre>
-      </div>
-
-      <!-- Code 2: Kent Distribution (FB5) -->
-      <div class="space-y-2">
-        <h3 class="text-sm font-bold text-amber-400 font-mono">2. Kent Distribution (FB<sub>5</sub>) Anisotropic Filter (3D)</h3>
-        <pre><code class="language-python text-xs text-slate-300 p-4 block">import numpy as np
-
-class KentFilter3D:
-    """
-    Kent (FB5) Anisotropic Bayesian Filter on S^2.
-    Tracks mean gamma1, major axis gamma2, minor axis gamma3, concentration kappa,
-    and ovalness beta via natural linear vector eta and quadratic matrix A.
-    """
-    def __init__(self, mu_prior=None, kappa_prior=8.0, beta_prior=0.0, psi_rad=0.0):
-        if mu_prior is None:
-            self.gamma1 = np.array([0.0, 0.0, 1.0])
-        else:
-            self.gamma1 = mu_prior / np.linalg.norm(mu_prior)
-            
-        self.kappa = float(kappa_prior)
-        self.beta = float(beta_prior)
-        
-        # Build initial orthogonal axes in tangent plane
-        arb = np.array([0, 0, 1]) if abs(self.gamma1[2]) < 0.9 else np.array([1, 0, 0])
-        u = np.cross(self.gamma1, arb); u /= np.linalg.norm(u)
-        v = np.cross(self.gamma1, u)
-        
-        self.gamma2 = np.cos(psi_rad) * u + np.sin(psi_rad) * v
-        self.gamma3 = -np.sin(psi_rad) * u + np.cos(psi_rad) * v
-        
-        # Natural parameters: eta (linear) and traceless matrix A (quadratic)
-        self.eta = self.kappa * self.gamma1
-        self.A = self.beta * (np.outer(self.gamma2, self.gamma2) - np.outer(self.gamma3, self.gamma3))
-
-    def update(self, y_obs, kappa_obs, beta_obs=0.0, major_noise_dir=None):
-        """
-        Conjugate Bayesian update with anisotropic observation noise:
-          y_obs: unit vector of shape (3,)
-          kappa_obs: average measurement precision
-          beta_obs: noise ovalness (0 <= 2*beta_obs < kappa_obs)
-          major_noise_dir: orientation of the blurry/high-uncertainty tangent axis
-        """
-        y_obs = y_obs / np.linalg.norm(y_obs)
-        eta_obs = kappa_obs * y_obs
-        
-        # Construct observation quadratic matrix A_obs
-        if major_noise_dir is not None and beta_obs > 0:
-            v_maj = major_noise_dir - np.dot(major_noise_dir, y_obs) * y_obs
-            v_maj /= (np.linalg.norm(v_maj) + 1e-9)
-            v_min = np.cross(y_obs, v_maj)
-            A_obs = beta_obs * (np.outer(v_maj, v_maj) - np.outer(v_min, v_min))
-        else:
-            A_obs = np.zeros((3, 3))
-
-        # 1. Exact Bayesian linear sum in natural parameter space
-        self.eta += eta_obs
-        self.A += A_obs
-
-        # 2. Extract Kent parameters (Assumed Density Projection)
-        self.kappa = np.linalg.norm(self.eta)
-        self.gamma1 = self.eta / self.kappa
-
-        # Project A onto tangent plane of updated mean gamma1
-        P = np.eye(3) - np.outer(self.gamma1, self.gamma1)
-        B = P @ self.A @ P
-
-        eigvals, eigvecs = np.linalg.eigh(B)
-        idx = np.argsort(eigvals)
-        eigvals, eigvecs = eigvals[idx], eigvecs[:, idx]
-
-        # Extract major and minor tangent axes
-        self.gamma3 = eigvecs[:, 1]  # minor axis
-        self.gamma2 = eigvecs[:, 2]  # major axis
-        self.beta = float(np.clip((eigvals[2] - eigvals[1]) / 4.0, 0.0, (self.kappa / 2.0) - 0.1))
-
-        return self.gamma1, self.gamma2, self.gamma3, self.kappa, self.beta
-
-    def get_credible_ellipse_axes(self):
-        """Returns 95% semi-major and semi-minor angular radii in degrees."""
-        c2 = 5.991  # Chi-Square 95% (2 DoF)
-        a = np.sqrt(c2 / max(0.1, self.kappa - 2 * self.beta))
-        b = np.sqrt(c2 / max(0.1, self.kappa + 2 * self.beta))
-        theta_major_deg = np.degrees(np.arcsin(min(0.999, a)))
-        theta_minor_deg = np.degrees(np.arcsin(min(0.999, b)))
-        return theta_major_deg, theta_minor_deg
-</code></pre>
-      </div>
-
-      <!-- Code 3: Riemannian EKF 128D -->
-      <div class="space-y-2">
-        <h3 class="text-sm font-bold text-cyan-400 font-mono">3. Production Riemannian EKF for 128D Hypersphere Embeddings</h3>
-        <pre><code class="language-python text-xs text-slate-300 p-4 block">import numpy as np
-
-class RiemannianSphereEKF:
-    """
-    Riemannian Extended Kalman Filter on the unit hypersphere S^{d-1}.
-    Maintains mean on S^{d-1} and full (d-1) covariance on tangent plane T_mu.
-    """
-    def __init__(self, dim=128, initial_mu=None, initial_var=0.1):
-        self.d = dim
-        if initial_mu is None:
-            self.mu = np.zeros(self.d); self.mu[0] = 1.0
-        else:
-            self.mu = initial_mu / np.linalg.norm(initial_mu)
-            
-        # Covariance on the (d-1) tangent space
-        self.P = np.eye(self.d - 1) * initial_var
-
-    def _get_tangent_basis(self, mu):
-        """Generates orthonormal basis E of shape (d, d-1) for T_mu(S^{d-1})."""
-        idx = np.argmin(np.abs(mu))
-        arb = np.zeros(self.d); arb[idx] = 1.0
-        u1 = arb - np.dot(arb, mu) * mu
-        u1 /= np.linalg.norm(u1)
-        
-        # QR decomposition to construct remaining orthonormal basis
-        A = np.random.randn(self.d, self.d - 1)
-        A = A - np.outer(mu, mu @ A)
-        Q, _ = np.linalg.qr(A)
-        return Q
-
-    def log_map(self, mu, y):
-        """Projects point y on S^{d-1} to tangent vector v in T_mu."""
-        cos_theta = np.clip(np.dot(mu, y), -1.0, 1.0)
-        theta = np.arccos(cos_theta)
-        if theta < 1e-7:
-            return np.zeros(self.d)
-        return (theta / np.sin(theta)) * (y - cos_theta * mu)
-
-    def exp_map(self, mu, v):
-        """Retracts tangent vector v back onto unit sphere S^{d-1}."""
-        norm_v = np.linalg.norm(v)
-        if norm_v < 1e-7:
-            return mu
-        return np.cos(norm_v) * mu + np.sin(norm_v) * (v / norm_v)
-
-    def update(self, y_obs, R_tangent):
-        """
-        Bayesian update:
-          y_obs: unit vector of shape (d,)
-          R_tangent: measurement noise covariance of shape (d-1, d-1)
-        """
-        y_obs = y_obs / np.linalg.norm(y_obs)
-        E = self._get_tangent_basis(self.mu)
-
-        # 1. Log Map into tangent innovation coordinates
-        v_ambient = self.log_map(self.mu, y_obs)
-        z = E.T @ v_ambient
-
-        # 2. Kalman Gain on (d-1) plane
-        S = self.P + R_tangent
-        K = self.P @ np.linalg.inv(S)
-
-        # 3. Tangent Correction
-        delta = E @ (K @ z)
-
-        # 4. Exp Map: Retract mean to sphere
-        self.mu = self.exp_map(self.mu, delta)
-
-        # 5. Covariance update
-        P_post = (np.eye(self.d - 1) - K) @ self.P
-        self.P = 0.5 * (P_post + P_post.T) # Ensure symmetry
-
-        return self.mu, self.P
-</code></pre>
+          <div class="p-3.5 rounded-lg bg-black/40 border border-slate-800 space-y-1.5">
+            <span class="font-bold text-emerald-400 block text-xs">Investigation 3: End-to-End MHT Benchmarking</span>
+            <p class="text-slate-400 text-[11px]">
+              Simulate a UAS executing an orbit-and-climb trajectory over a target vehicle with distractor cars. Compare track retention and false-drop rates between: (a) Baseline vMF, (b) Isotropic R-EKF, and (c) Tangent PLS Pose-Calibrated Anisotropic R-EKF.
+            </p>
+          </div>
+        </div>
       </div>
     </section>
 
     <!-- Footer -->
     <footer class="pt-8 border-t border-slate-800 text-center text-xs text-slate-400">
-      Compiled for Research Engineering Teams &bull; Advanced Directional Statistics & Hypersphere Bayesian Filtering &bull; 2026
+      Aerial Target Tracking on Riemannian Feature Manifolds &bull; Research Engineering Suite &bull; 2026
     </footer>
 
   </div>
-
-  <!-- SCRIPT: INTERACTIVE WIDGET ENGINES -->
-  <script>
-    // =========================================================================
-    // WIDGET 1: vMF SIMULATOR
-    // =========================================================================
-    (function() {
-      const canvas = document.getElementById('canvasVmf');
-      const ctx = canvas.getContext('2d');
-      let stepIdx = 0;
-      let rotX = 0.45, rotY = -0.55;
-      let isDragging = false, lastX = 0, lastY = 0;
-
-      let eta = { x: 0, y: 0.1, z: 5.0 };
-      let observations = [];
-      let currentKappaObs = 8.0;
-
-      function norm(v) {
-        const l = Math.hypot(v.x, v.y, v.z) || 1e-9;
-        return { x: v.x / l, y: v.y / l, z: v.z / l, l };
-      }
-
-      function project(v) {
-        const cY = Math.cos(rotY), sY = Math.sin(rotY);
-        const x1 = v.x * cY + v.z * sY, y1 = v.y, z1 = -v.x * sY + v.z * cY;
-        const cX = Math.cos(rotX), sX = Math.sin(rotX);
-        const x2 = x1, y2 = y1 * cX - z1 * sX, z2 = y1 * sX + z1 * cX;
-        return { x: canvas.width / 2 + x2 * 75, y: canvas.height / 2 - y2 * 75, z: z2 };
-      }
-
-      function draw() {
-        ctx.clearRect(0, 0, canvas.width, canvas.height);
-        const n = norm(eta);
-        const kappa = n.l;
-        const mu = { x: n.x, y: n.y, z: n.z };
-
-        // Cone radius: cos(theta) = 1 + (1/k)*ln(0.05 + 0.95*exp(-2k))
-        const w0 = Math.max(-1, Math.min(1, 1 + (1 / Math.max(0.1, kappa)) * Math.log(0.05 + 0.95 * Math.exp(Math.max(-20, -2 * kappa)))));
-        const theta95 = Math.acos(w0);
-
-        // Update stats
-        document.getElementById('vmfStatKappa').innerText = kappa.toFixed(1);
-        document.getElementById('vmfStatRadius').innerHTML = (theta95 * 180 / Math.PI).toFixed(1) + '&deg;';
-        document.getElementById('vmfStepBadge').innerText = `Step: ${stepIdx}`;
-
-        // Sphere
-        const cx = canvas.width / 2, cy = canvas.height / 2, r = 75;
-        const grad = ctx.createRadialGradient(cx - 20, cy - 20, 10, cx, cy, r);
-        grad.addColorStop(0, '#1e293b'); grad.addColorStop(1, '#020617');
-        ctx.fillStyle = grad;
-        ctx.beginPath(); ctx.arc(cx, cy, r, 0, Math.PI * 2); ctx.fill();
-        ctx.strokeStyle = 'rgba(148, 163, 184, 0.2)'; ctx.stroke();
-
-        // 95% Cone Circle
-        let arb = Math.abs(mu.z) < 0.9 ? { x: 0, y: 0, z: 1 } : { x: 1, y: 0, z: 0 };
-        let u1 = norm({ x: mu.y * arb.z - mu.z * arb.y, y: mu.z * arb.x - mu.x * arb.z, z: mu.x * arb.y - mu.y * arb.x });
-        let u2 = { x: mu.y * u1.z - mu.z * u1.y, y: mu.z * u1.x - mu.x * u1.z, z: mu.x * u1.y - mu.y * u1.x };
-
-        ctx.beginPath();
-        for (let i = 0; i <= 48; i++) {
-          const phi = (i / 48) * Math.PI * 2;
-          const cp = Math.cos(phi), sp = Math.sin(phi);
-          const ct = Math.cos(theta95), st = Math.sin(theta95);
-          const pt = project({
-            x: mu.x * ct + (u1.x * cp + u2.x * sp) * st,
-            y: mu.y * ct + (u1.y * cp + u2.y * sp) * st,
-            z: mu.z * ct + (u1.z * cp + u2.z * sp) * st
-          });
-          if (i === 0) ctx.moveTo(pt.x, pt.y); else ctx.lineTo(pt.x, pt.y);
-        }
-        ctx.strokeStyle = '#22d3ee'; ctx.lineWidth = 2; ctx.stroke();
-        ctx.fillStyle = 'rgba(34, 211, 238, 0.12)'; ctx.fill();
-
-        // Observations
-        for (let i = 0; i < observations.length; i++) {
-          const p = project(observations[i]);
-          if (p.z > -0.1) {
-            ctx.beginPath(); ctx.arc(p.x, p.y, 4, 0, Math.PI * 2);
-            ctx.fillStyle = '#fbbf24'; ctx.fill(); ctx.stroke();
-          }
-        }
-
-        // Mean vector
-        const pMu = project(mu);
-        const pC = project({ x: 0, y: 0, z: 0 });
-        ctx.beginPath(); ctx.moveTo(pC.x, pC.y); ctx.lineTo(pMu.x, pMu.y);
-        ctx.strokeStyle = '#34d399'; ctx.lineWidth = 3; ctx.stroke();
-        ctx.beginPath(); ctx.arc(pMu.x, pMu.y, 4.5, 0, Math.PI * 2);
-        ctx.fillStyle = '#34d399'; ctx.fill();
-      }
-
-      function addObs(k) {
-        stepIdx++;
-        const angle = stepIdx * 0.45;
-        const o = norm({ x: Math.sin(angle) * 0.7, y: Math.cos(angle) * 0.3, z: 0.85 });
-        observations.push(o);
-        eta.x += k * o.x; eta.y += k * o.y; eta.z += k * o.z;
-        document.getElementById('vmfStatLastObs').innerText = k.toFixed(1);
-        draw();
-      }
-
-      document.getElementById('vmfSliderKappa').addEventListener('input', (e) => {
-        currentKappaObs = parseFloat(e.target.value);
-        document.getElementById('vmfValSlider').innerText = currentKappaObs.toFixed(1);
-      });
-      document.getElementById('vmfBtnStep').addEventListener('click', () => addObs(currentKappaObs));
-      document.getElementById('vmfBtnNoisy').addEventListener('click', () => addObs(1.0));
-      document.getElementById('vmfBtnReset').addEventListener('click', () => {
-        stepIdx = 0; eta = { x: 0, y: 0.1, z: 5.0 }; observations = [];
-        document.getElementById('vmfStatLastObs').innerText = '-';
-        draw();
-      });
-
-      canvas.addEventListener('mousedown', (e) => { isDragging = true; lastX = e.clientX; lastY = e.clientY; });
-      window.addEventListener('mouseup', () => isDragging = false);
-      window.addEventListener('mousemove', (e) => {
-        if (!isDragging) return;
-        rotY += (e.clientX - lastX) * 0.01; rotX += (e.clientY - lastY) * 0.01;
-        rotX = Math.max(-1.4, Math.min(1.4, rotX));
-        lastX = e.clientX; lastY = e.clientY;
-        draw();
-      });
-
-      draw();
-    })();
-
-    // =========================================================================
-    // WIDGET 2: KENT SIMULATOR
-    // =========================================================================
-    (function() {
-      const canvas = document.getElementById('canvasKent');
-      const ctx = canvas.getContext('2d');
-      let rotX = 0.40, rotY = -0.45;
-      let isDragging = false, lastX = 0, lastY = 0;
-
-      let prior = { mu: { x: 0, y: 0.1, z: 0.995 }, kappa: 8.0, beta: 0.0, psiDeg: 0 };
-      let obsDist = 20, obsBearing = 45, kappaObs = 12.0, betaObs = 4.5, psiObs = 30;
-
-      function norm(v) {
-        const l = Math.hypot(v.x, v.y, v.z) || 1e-9;
-        return { x: v.x / l, y: v.y / l, z: v.z / l, l };
-      }
-      function dot(a, b) { return a.x * b.x + a.y * b.y + a.z * b.z; }
-      function cross(a, b) { return { x: a.y * b.z - a.z * b.y, y: a.z * b.x - a.x * b.z, z: a.x * b.y - a.y * b.x }; }
-
-      function project(v) {
-        const cY = Math.cos(rotY), sY = Math.sin(rotY);
-        const x1 = v.x * cY + v.z * sY, y1 = v.y, z1 = -v.x * sY + v.z * cY;
-        const cX = Math.cos(rotX), sX = Math.sin(rotX);
-        const x2 = x1, y2 = y1 * cX - z1 * sX, z2 = y1 * sX + z1 * cX;
-        return { x: canvas.width / 2 + x2 * 75, y: canvas.height / 2 - y2 * 75, z: z2 };
-      }
-
-      function getBasis(n, tiltDeg) {
-        let arb = Math.abs(n.z) < 0.9 ? { x: 0, y: 0, z: 1 } : { x: 1, y: 0, z: 0 };
-        let u = norm(cross(n, arb));
-        let v = cross(n, u);
-        const rad = tiltDeg * Math.PI / 180;
-        const cr = Math.cos(rad), sr = Math.sin(rad);
-        return {
-          e1: norm({ x: u.x * cr + v.x * sr, y: u.y * cr + v.y * sr, z: u.z * cr + v.z * sr }),
-          e2: norm({ x: -u.x * sr + v.x * cr, y: -u.y * sr + v.y * cr, z: -u.z * sr + v.z * cr })
-        };
-      }
-
-      function computePosterior() {
-        const pBasis = getBasis(prior.mu, 0);
-        const dRad = obsDist * Math.PI / 180, bRad = obsBearing * Math.PI / 180;
-        const dx = Math.cos(bRad), dy = Math.sin(bRad);
-        const yObs = norm({
-          x: prior.mu.x * Math.cos(dRad) + (pBasis.e1.x * dx + pBasis.e2.x * dy) * Math.sin(dRad),
-          y: prior.mu.y * Math.cos(dRad) + (pBasis.e1.y * dx + pBasis.e2.y * dy) * Math.sin(dRad),
-          z: prior.mu.z * Math.cos(dRad) + (pBasis.e1.z * dx + pBasis.e2.z * dy) * Math.sin(dRad)
-        });
-
-        const oBasis = getBasis(yObs, psiObs);
-        const cBetaObs = Math.min(betaObs, (kappaObs / 2) - 0.2);
-
-        // Linear natural sum
-        const etaPost = {
-          x: prior.kappa * prior.mu.x + kappaObs * yObs.x,
-          y: prior.kappa * prior.mu.y + kappaObs * yObs.y,
-          z: prior.kappa * prior.mu.z + kappaObs * yObs.z
-        };
-        const nEta = norm(etaPost);
-        const kappaPost = nEta.l;
-        const muPost = { x: nEta.x, y: nEta.y, z: nEta.z };
-
-        // Quadratic sum projected to muPost
-        const uBasis = getBasis(muPost, 0);
-        const u = uBasis.e1, v = uBasis.e2;
-
-        // Tangent projection gives simple closed form for betaPost
-        const A_prior = prior.beta;
-        const A_obs = cBetaObs;
-        const betaPost = Math.min((kappaPost / 2) - 0.1, Math.max(0, Math.hypot(A_prior * 0.7 + A_obs * 0.8, (A_prior - A_obs) * 0.3)));
-
-        const postBasis = getBasis(muPost, psiObs * 0.5);
-        return { yObs, oBasis, cBetaObs, muPost, kappaPost, betaPost, e1Post: postBasis.e1, e2Post: postBasis.e2 };
-      }
-
-      function drawEllipse(center, kappa, beta, e1, e2, col, isDashed) {
-        const c2 = 5.991;
-        const a = Math.sqrt(c2 / Math.max(0.1, kappa - 2 * beta));
-        const b = Math.sqrt(c2 / Math.max(0.1, kappa + 2 * beta));
-        ctx.beginPath();
-        if (isDashed) ctx.setLineDash([3, 3]); else ctx.setLineDash([]);
-        for (let i = 0; i <= 48; i++) {
-          const phi = (i / 48) * Math.PI * 2;
-          const x1 = a * Math.cos(phi), x2 = b * Math.sin(phi);
-          const n = Math.hypot(x1, x2);
-          const cn = Math.cos(n), sn = Math.sin(n) / (n || 1);
-          const pt = project({
-            x: center.x * cn + (e1.x * x1 + e2.x * x2) * sn,
-            y: center.y * cn + (e1.y * x1 + e2.y * x2) * sn,
-            z: center.z * cn + (e1.z * x1 + e2.z * x2) * sn
-          });
-          if (i === 0) ctx.moveTo(pt.x, pt.y); else ctx.lineTo(pt.x, pt.y);
-        }
-        ctx.strokeStyle = col; ctx.lineWidth = 2; ctx.stroke();
-        ctx.setLineDash([]);
-        return { a: (Math.asin(Math.min(0.99, a)) * 180 / Math.PI).toFixed(0), b: (Math.asin(Math.min(0.99, b)) * 180 / Math.PI).toFixed(0) };
-      }
-
-      function draw() {
-        ctx.clearRect(0, 0, canvas.width, canvas.height);
-        const post = computePosterior();
-
-        // Sphere
-        const cx = canvas.width / 2, cy = canvas.height / 2, r = 75;
-        const grad = ctx.createRadialGradient(cx - 20, cy - 20, 10, cx, cy, r);
-        grad.addColorStop(0, '#1e293b'); grad.addColorStop(1, '#020617');
-        ctx.fillStyle = grad;
-        ctx.beginPath(); ctx.arc(cx, cy, r, 0, Math.PI * 2); ctx.fill();
-        ctx.strokeStyle = 'rgba(148, 163, 184, 0.2)'; ctx.stroke();
-
-        // Prior (Cyan), Obs (Amber), Post (Emerald)
-        const pB = getBasis(prior.mu, prior.psiDeg);
-        const axPrior = drawEllipse(prior.mu, prior.kappa, prior.beta, pB.e1, pB.e2, '#22d3ee', true);
-        const axObs = drawEllipse(post.yObs, kappaObs, post.cBetaObs, post.oBasis.e1, post.oBasis.e2, '#f59e0b', false);
-        const axPost = drawEllipse(post.muPost, post.kappaPost, post.betaPost, post.e1Post, post.e2Post, '#10b981', false);
-
-        // Centers
-        const pP = project(prior.mu), pO = project(post.yObs), pPost = project(post.muPost);
-        ctx.beginPath(); ctx.arc(pP.x, pP.y, 3.5, 0, Math.PI * 2); ctx.fillStyle = '#22d3ee'; ctx.fill();
-        ctx.beginPath(); ctx.arc(pO.x, pO.y, 4.5, 0, Math.PI * 2); ctx.fillStyle = '#f59e0b'; ctx.fill();
-        ctx.beginPath(); ctx.arc(pPost.x, pPost.y, 4, 0, Math.PI * 2); ctx.fillStyle = '#10b981'; ctx.fill();
-
-        document.getElementById('kentStatPrior').innerText = `\u03BA: ${prior.kappa.toFixed(1)} | \u03B2: ${prior.beta.toFixed(1)}`;
-        document.getElementById('kentStatPriorAxes').innerText = `${axPrior.a}\u00B0 \u00D7 ${axPrior.b}\u00B0`;
-        document.getElementById('kentStatObs').innerText = `\u03BA: ${kappaObs.toFixed(1)} | \u03B2: ${post.cBetaObs.toFixed(1)}`;
-        document.getElementById('kentStatObsAxes').innerText = `${axObs.a}\u00B0 \u00D7 ${axObs.b}\u00B0`;
-        document.getElementById('kentStatPost').innerText = `\u03BA: ${post.kappaPost.toFixed(1)} | \u03B2: ${post.betaPost.toFixed(1)}`;
-        document.getElementById('kentStatPostAxes').innerText = `${axPost.a}\u00B0 \u00D7 ${axPost.b}\u00B0`;
-      }
-
-      document.getElementById('kentSliderDist').addEventListener('input', (e) => { obsDist = parseFloat(e.target.value); document.getElementById('kentValDist').innerText = `${obsDist}\u00B0`; draw(); });
-      document.getElementById('kentSliderBearing').addEventListener('input', (e) => { obsBearing = parseFloat(e.target.value); document.getElementById('kentValBearing').innerText = `${obsBearing}\u00B0`; draw(); });
-      document.getElementById('kentSliderBeta').addEventListener('input', (e) => { betaObs = parseFloat(e.target.value); document.getElementById('kentValBeta').innerText = betaObs.toFixed(1); draw(); });
-      document.getElementById('kentSliderPsi').addEventListener('input', (e) => { psiObs = parseFloat(e.target.value); document.getElementById('kentValPsi').innerText = `${psiObs}\u00B0`; draw(); });
-
-      document.getElementById('kentPreHoriz').addEventListener('click', () => { betaObs = 4.8; psiObs = 0; document.getElementById('kentSliderBeta').value = 4.8; document.getElementById('kentSliderPsi').value = 0; draw(); });
-      document.getElementById('kentPreVert').addEventListener('click', () => { betaObs = 4.8; psiObs = 90; document.getElementById('kentSliderBeta').value = 4.8; document.getElementById('kentSliderPsi').value = 90; draw(); });
-      document.getElementById('kentPreVmf').addEventListener('click', () => { betaObs = 0.0; document.getElementById('kentSliderBeta').value = 0; draw(); });
-
-      document.getElementById('kentBtnCommit').addEventListener('click', () => {
-        const post = computePosterior();
-        prior.mu = post.muPost; prior.kappa = post.kappaPost; prior.beta = post.betaPost; prior.psiDeg = psiObs * 0.5;
-        obsBearing = (obsBearing + 60) % 360;
-        draw();
-      });
-      document.getElementById('kentBtnReset').addEventListener('click', () => {
-        prior = { mu: { x: 0, y: 0.1, z: 0.995 }, kappa: 8.0, beta: 0.0, psiDeg: 0 };
-        draw();
-      });
-
-      canvas.addEventListener('mousedown', (e) => { isDragging = true; lastX = e.clientX; lastY = e.clientY; });
-      window.addEventListener('mouseup', () => isDragging = false);
-      window.addEventListener('mousemove', (e) => {
-        if (!isDragging) return;
-        rotY += (e.clientX - lastX) * 0.01; rotX += (e.clientY - lastY) * 0.01;
-        rotX = Math.max(-1.4, Math.min(1.4, rotX));
-        lastX = e.clientX; lastY = e.clientY;
-        draw();
-      });
-
-      draw();
-    })();
-
-    // =========================================================================
-    // WIDGET 3: RIEMANNIAN EKF SIMULATOR
-    // =========================================================================
-    (function() {
-      const canvas = document.getElementById('canvasRekf');
-      const ctx = canvas.getContext('2d');
-      let rotX = 0.45, rotY = -0.50;
-      let isDragging = false, lastX = 0, lastY = 0;
-
-      let mu = { x: 0, y: 0.15, z: 0.988 };
-      let P_diag = [0.08, 0.08];
-      let obsDist = 30, anisoRatio = 25.0, obsBearing = 35;
-
-      function norm(v) {
-        const l = Math.hypot(v.x, v.y, v.z) || 1e-9;
-        return { x: v.x / l, y: v.y / l, z: v.z / l, l };
-      }
-      function dot(a, b) { return a.x * b.x + a.y * b.y + a.z * b.z; }
-      function cross(a, b) { return { x: a.y * b.z - a.z * b.y, y: a.z * b.x - a.x * b.z, z: a.x * b.y - a.y * b.x }; }
-
-      function project(v) {
-        const cY = Math.cos(rotY), sY = Math.sin(rotY);
-        const x1 = v.x * cY + v.z * sY, y1 = v.y, z1 = -v.x * sY + v.z * cY;
-        const cX = Math.cos(rotX), sX = Math.sin(rotX);
-        const x2 = x1, y2 = y1 * cX - z1 * sX, z2 = y1 * sX + z1 * cX;
-        return { x: canvas.width / 2 + x2 * 75, y: canvas.height / 2 - y2 * 75, z: z2 };
-      }
-
-      function getBasis(n) {
-        let arb = Math.abs(n.z) < 0.9 ? { x: 0, y: 0, z: 1 } : { x: 1, y: 0, z: 0 };
-        let u = norm(cross(n, arb));
-        let v = cross(n, u);
-        return { u, v };
-      }
-
-      function setBenchmark(d) {
-        document.querySelectorAll('#dimBtn3, #dimBtn128, #dimBtn512').forEach(b => b.className = 'px-2 py-0.5 rounded border border-slate-700 bg-slate-900');
-        document.getElementById(`dimBtn${d}`).className = 'px-2 py-0.5 rounded border border-emerald-500 bg-emerald-950 text-emerald-300 font-bold';
-        document.getElementById('rekfBenchDim').innerText = d - 1;
-        document.getElementById('rekfBenchTitle').innerText = `${d}D Hypersphere Profile`;
-
-        const bytes = ((d - 1) * (d - 1) + d) * 4;
-        const memKB = (bytes / 1024).toFixed(1);
-        document.getElementById('rekfBenchMem').innerText = memKB < 1024 ? `${memKB} KB` : `${(memKB/1024).toFixed(2)} MB`;
-        const flops = Math.round((2.5 * Math.pow(d - 1, 3)) / 1e3);
-        document.getElementById('rekfBenchFlops').innerText = flops < 1000 ? `~${flops} KFLOPs` : `~${(flops / 1e3).toFixed(1)} MFLOPs`;
-        document.getElementById('rekfBenchLat').innerText = d <= 64 ? '< 0.01 ms' : d === 128 ? '< 0.05 ms (20 kHz)' : '~1.8 ms (550 Hz)';
-      }
-
-      function draw() {
-        ctx.clearRect(0, 0, canvas.width, canvas.height);
-        const basis = getBasis(mu);
-
-        // Sphere
-        const cx = canvas.width / 2, cy = canvas.height / 2, r = 75;
-        const grad = ctx.createRadialGradient(cx - 20, cy - 20, 10, cx, cy, r);
-        grad.addColorStop(0, '#1e293b'); grad.addColorStop(1, '#020617');
-        ctx.fillStyle = grad;
-        ctx.beginPath(); ctx.arc(cx, cy, r, 0, Math.PI * 2); ctx.fill();
-        ctx.strokeStyle = 'rgba(148, 163, 184, 0.2)'; ctx.stroke();
-
-        // Tangent Plane Square
-        const s = 0.65;
-        const p1 = project({ x: mu.x - s*basis.u.x - s*basis.v.x, y: mu.y - s*basis.u.y - s*basis.v.y, z: mu.z - s*basis.u.z - s*basis.v.z });
-        const p2 = project({ x: mu.x + s*basis.u.x - s*basis.v.x, y: mu.y + s*basis.u.y - s*basis.v.y, z: mu.z + s*basis.u.z - s*basis.v.z });
-        const p3 = project({ x: mu.x + s*basis.u.x + s*basis.v.x, y: mu.y + s*basis.u.y + s*basis.v.y, z: mu.z + s*basis.u.z + s*basis.v.z });
-        const p4 = project({ x: mu.x - s*basis.u.x + s*basis.v.x, y: mu.y - s*basis.u.y + s*basis.v.y, z: mu.z - s*basis.u.z + s*basis.v.z });
-
-        ctx.beginPath(); ctx.moveTo(p1.x, p1.y); ctx.lineTo(p2.x, p2.y); ctx.lineTo(p3.x, p3.y); ctx.lineTo(p4.x, p4.y); ctx.closePath();
-        ctx.fillStyle = 'rgba(6, 182, 212, 0.08)'; ctx.fill();
-        ctx.strokeStyle = 'rgba(6, 182, 212, 0.4)'; ctx.stroke();
-
-        // Observation on sphere & Log Map
-        const dRad = obsDist * Math.PI / 180, bRad = obsBearing * Math.PI / 180;
-        const yObs = norm({
-          x: mu.x * Math.cos(dRad) + (basis.u.x * Math.cos(bRad) + basis.v.x * Math.sin(bRad)) * Math.sin(dRad),
-          y: mu.y * Math.cos(dRad) + (basis.u.y * Math.cos(bRad) + basis.v.y * Math.sin(bRad)) * Math.sin(dRad),
-          z: mu.z * Math.cos(dRad) + (basis.u.z * Math.cos(bRad) + basis.v.z * Math.sin(bRad)) * Math.sin(dRad)
-        });
-
-        const cosT = Math.max(-1, Math.min(1, dot(mu, yObs)));
-        const theta = Math.acos(cosT);
-        const sinc = theta / (Math.sin(theta) || 1e-6);
-        const vHead = {
-          x: mu.x + sinc * (yObs.x - cosT * mu.x),
-          y: mu.y + sinc * (yObs.y - cosT * mu.y),
-          z: mu.z + sinc * (yObs.z - cosT * mu.z)
-        };
-
-        const pMu = project(mu), pHead = project(vHead), pY = project(yObs);
-
-        // Red Log-Map Vector on plane
-        ctx.beginPath(); ctx.moveTo(pMu.x, pMu.y); ctx.lineTo(pHead.x, pHead.y);
-        ctx.strokeStyle = '#f43f5e'; ctx.lineWidth = 2.5; ctx.stroke();
-
-        // Projection dashed line down to y
-        ctx.beginPath(); ctx.setLineDash([3, 3]); ctx.moveTo(pHead.x, pHead.y); ctx.lineTo(pY.x, pY.y);
-        ctx.strokeStyle = 'rgba(251, 191, 36, 0.7)'; ctx.stroke(); ctx.setLineDash([]);
-
-        // Anisotropic Tangent Covariance Ellipse (scaled directly by anisoRatio)
-        const baseVariance = 0.08;
-        const majorVar = baseVariance * Math.sqrt(anisoRatio);
-        const minorVar = baseVariance / Math.sqrt(anisoRatio);
-        const a = Math.min(1.4, Math.sqrt(majorVar) * 2.2);
-        const b = Math.max(0.012, Math.sqrt(minorVar) * 2.2);
-
-        // Draw 95% uncertainty contour RETRACTED ONTO SPHERE SURFACE via Exponential Map
-        ctx.beginPath();
-        for (let i = 0; i <= 64; i++) {
-          const phi = (i / 64) * Math.PI * 2;
-          const xi_u = a * Math.cos(phi);
-          const xi_v = b * Math.sin(phi);
-          const n = Math.hypot(xi_u, xi_v);
-          const cn = Math.cos(n), sn = Math.sin(n) / (n || 1e-7);
-          const ptSphere = {
-            x: mu.x * cn + (basis.u.x * xi_u + basis.v.x * xi_v) * sn,
-            y: mu.y * cn + (basis.u.y * xi_u + basis.v.y * xi_v) * sn,
-            z: mu.z * cn + (basis.u.z * xi_u + basis.v.z * xi_v) * sn
-          };
-          const p = project(ptSphere);
-          if (p.z > -0.2) {
-            if (i === 0) ctx.moveTo(p.x, p.y);
-            else ctx.lineTo(p.x, p.y);
-          }
-        }
-        ctx.strokeStyle = '#10b981'; ctx.lineWidth = 2.5; ctx.stroke();
-        ctx.fillStyle = 'rgba(16, 185, 129, 0.22)'; ctx.fill();
-
-        // Dots
-        ctx.beginPath(); ctx.arc(pHead.x, pHead.y, 4, 0, Math.PI * 2); ctx.fillStyle = '#f43f5e'; ctx.fill();
-        ctx.beginPath(); ctx.arc(pY.x, pY.y, 4.5, 0, Math.PI * 2); ctx.fillStyle = '#fbbf24'; ctx.fill();
-        ctx.beginPath(); ctx.arc(pMu.x, pMu.y, 4, 0, Math.PI * 2); ctx.fillStyle = '#10b981'; ctx.fill();
-
-        // Update readouts
-        const majDeg = (Math.asin(Math.min(0.999, a)) * 180 / Math.PI).toFixed(0);
-        const minDeg = (Math.asin(Math.min(0.999, b)) * 180 / Math.PI).toFixed(1);
-        const statMaj = document.getElementById('rekfStatMaj');
-        const statMin = document.getElementById('rekfStatMin');
-        if (statMaj) statMaj.innerText = `${majDeg}\u00B0`;
-        if (statMin) statMin.innerText = `${minDeg}\u00B0`;
-      }
-
-      document.getElementById('dimBtn3').addEventListener('click', () => setBenchmark(3));
-      document.getElementById('dimBtn128').addEventListener('click', () => setBenchmark(128));
-      document.getElementById('dimBtn512').addEventListener('click', () => setBenchmark(512));
-
-      document.getElementById('rekfSliderDist').addEventListener('input', (e) => {
-        obsDist = parseFloat(e.target.value);
-        document.getElementById('rekfValDist').innerText = `${obsDist}\u00B0`;
-        draw();
-      });
-      document.getElementById('rekfSliderAniso').addEventListener('input', (e) => {
-        anisoRatio = parseFloat(e.target.value);
-        document.getElementById('rekfValAniso').innerText = `${anisoRatio.toFixed(0)}x`;
-        draw();
-      });
-
-      // Presets
-      const preRibbon = document.getElementById('rekfPreRibbon');
-      if (preRibbon) preRibbon.addEventListener('click', () => {
-        anisoRatio = 55; obsDist = 45;
-        document.getElementById('rekfSliderAniso').value = 55;
-        document.getElementById('rekfSliderDist').value = 45;
-        document.getElementById('rekfValAniso').innerText = '55x';
-        document.getElementById('rekfValDist').innerText = '45\u00B0';
-        draw();
-      });
-      const preDrift = document.getElementById('rekfPreDrift');
-      if (preDrift) preDrift.addEventListener('click', () => {
-        anisoRatio = 20; obsDist = 30;
-        document.getElementById('rekfSliderAniso').value = 20;
-        document.getElementById('rekfSliderDist').value = 30;
-        document.getElementById('rekfValAniso').innerText = '20x';
-        document.getElementById('rekfValDist').innerText = '30\u00B0';
-        draw();
-      });
-      const preIso = document.getElementById('rekfPreIso');
-      if (preIso) preIso.addEventListener('click', () => {
-        anisoRatio = 1; obsDist = 20;
-        document.getElementById('rekfSliderAniso').value = 1;
-        document.getElementById('rekfSliderDist').value = 20;
-        document.getElementById('rekfValAniso').innerText = '1x';
-        document.getElementById('rekfValDist').innerText = '20\u00B0';
-        draw();
-      });
-
-      document.getElementById('rekfBtnStep').addEventListener('click', () => {
-        const R_maj = 0.04 * anisoRatio;
-        const R_min = 0.04 / Math.sqrt(anisoRatio);
-        const K0 = P_diag[0] / (P_diag[0] + R_maj);
-        const K1 = P_diag[1] / (P_diag[1] + R_min);
-        const basis = getBasis(mu);
-        const bRad = obsBearing * Math.PI / 180;
-        const vLen = obsDist * Math.PI / 180;
-        const delta = {
-          x: basis.u.x * (K0 * vLen * Math.cos(bRad)) + basis.v.x * (K1 * vLen * Math.sin(bRad)),
-          y: basis.u.y * (K0 * vLen * Math.cos(bRad)) + basis.v.y * (K1 * vLen * Math.sin(bRad)),
-          z: basis.u.z * (K0 * vLen * Math.cos(bRad)) + basis.v.z * (K1 * vLen * Math.sin(bRad))
-        };
-        mu = norm({ x: mu.x + delta.x, y: mu.y + delta.y, z: mu.z + delta.z });
-        obsBearing = (obsBearing + 45) % 360;
-        draw();
-      });
-
-      document.getElementById('rekfBtnReset').addEventListener('click', () => {
-        mu = norm({ x: 0, y: 0.15, z: 0.988 });
-        anisoRatio = 25.0;
-        obsDist = 30;
-        document.getElementById('rekfSliderAniso').value = 25;
-        document.getElementById('rekfSliderDist').value = 30;
-        document.getElementById('rekfValAniso').innerText = '25x';
-        document.getElementById('rekfValDist').innerText = '30\u00B0';
-        draw();
-      });
-
-      canvas.addEventListener('mousedown', (e) => { isDragging = true; lastX = e.clientX; lastY = e.clientY; });
-      window.addEventListener('mouseup', () => isDragging = false);
-      window.addEventListener('mousemove', (e) => {
-        if (!isDragging) return;
-        rotY += (e.clientX - lastX) * 0.01; rotX += (e.clientY - lastY) * 0.01;
-        rotX = Math.max(-1.4, Math.min(1.4, rotX));
-        lastX = e.clientX; lastY = e.clientY;
-        draw();
-      });
-
-      setBenchmark(128);
-      draw();
-    })();
-  </script>
 </body>
 </html>
