@@ -150,6 +150,36 @@
         <h2 class="text-2xl font-bold text-white">Visualizing Calibrated Noise Ellipsoids</h2>
       </div>
 
+      <!-- How to Operate Callout Card -->
+      <div class="bg-slate-900/70 border border-slate-800 rounded-xl p-5 space-y-3 text-xs text-slate-300">
+        <div class="flex items-center justify-between border-b border-slate-800 pb-2">
+          <span class="font-bold text-sm text-cyan-300">How to Operate This Lab &amp; Observe the Differences</span>
+          <span class="font-mono text-[10px] text-slate-400">2-Minute Engineering Walkthrough</span>
+        </div>
+        
+        <div class="grid grid-cols-1 md:grid-cols-2 gap-3 text-slate-300">
+          <div>
+            <div class="font-semibold text-white mb-1">What the Geometry Represents:</div>
+            <ul class="list-disc pl-4 space-y-1 text-slate-400 text-[11px]">
+              <li><strong>Dark Sphere:</strong> The 128D visual embedding unit hypersphere (projected to 3D).</li>
+              <li><strong>Green Center Dot:</strong> Target vehicle's current mean embedding <code class="text-emerald-400">&mu;</code>.</li>
+              <li><strong>Green Ellipse:</strong> The calibrated 95% observation noise envelope <code class="text-emerald-400">R<sub>t</sub></code>. Any detection landing inside is treated as the same vehicle.</li>
+              <li><strong class="text-red-400">Red Arrow (w<sub>&phi;</sub>):</strong> Tangent sensitivity direction under horizontal azimuth orbit.</li>
+              <li><strong class="text-blue-400">Blue Arrow (w<sub>&theta;</sub>):</strong> Tangent sensitivity direction under vertical elevation climb.</li>
+            </ul>
+          </div>
+
+          <div>
+            <div class="font-semibold text-white mb-1">The 3-Step Test to Run:</div>
+            <ol class="list-decimal pl-4 space-y-1 text-slate-400 text-[11px]">
+              <li><strong>Inject Asymmetric Noise:</strong> Drag Azimuth Uncertainty <code class="text-red-400">&sigma;<sub>&phi;</sub> &rarr; 22&deg;</code> (drone circling fast) and Elevation Uncertainty <code class="text-blue-400">&sigma;<sub>&theta;</sub> &rarr; 2&deg;</code> (altitude steady).</li>
+              <li><strong>Inspect Tangent PLS Mode:</strong> Notice the green ellipse stretches <em>strictly</em> along the red azimuth line. The vertical elevation thickness stays razor-sharp. (Zero cross-talk).</li>
+              <li><strong>Click "WC-TPCA" Mode:</strong> Notice the axes tilt diagonally! Because PCA does not know physical angle labels, the eigenvectors are a diagonal blend. The high azimuth noise now <strong>bleeds into the vertical dimension</strong>, artificially inflating vertical uncertainty.</li>
+            </ol>
+          </div>
+        </div>
+      </div>
+
       <div class="border border-slate-800 bg-slate-950 rounded-xl p-4 shadow-xl">
         <div class="flex justify-between items-center pb-2 border-b border-slate-800 mb-3">
           <div>
@@ -234,7 +264,51 @@
     <section class="space-y-4">
       <div class="flex items-center gap-2">
         <span class="text-xs font-mono text-cyan-400 bg-cyan-950 px-2 py-0.5 rounded border border-cyan-800">Implementation</span>
-        <h2 class="text-2xl font-bold text-white">Python Calibration Pipeline</h2>
+        <h2 class="text-2xl font-bold text-white">Python Calibration Pipeline &amp; Investigation Blueprint</h2>
+      </div>
+
+      <!-- Tutorial & Engineering Intent Narrative -->
+      <div class="bg-slate-900/70 border border-slate-800 rounded-xl p-5 space-y-4 text-xs text-slate-300">
+        <div class="border-b border-slate-800 pb-2">
+          <span class="font-bold text-sm text-amber-300">Engineering Intent: The Proposed Investigation</span>
+          <p class="text-[11px] text-slate-400 mt-0.5">A roadmap for our research engineering team on how to take our synthetic car dataset and implement this filter.</p>
+        </div>
+
+        <div class="space-y-3">
+          <div>
+            <span class="font-bold text-white">1. The Motivation (Why We Are Doing This):</span>
+            <p class="text-slate-400 mt-0.5">
+              In our multi-hypothesis tracker (MHT), target states will incorporate visual embeddings alongside 3D kinematics. Standard trackers fail during aerial orbit maneuvers because they treat all 128 embedding dimensions equally. If our UAS climbs or circles a target, the visual features change, causing false track drops. Our goal is to extract the <strong>viewpoint sensitivity matrix W</strong> so the filter allows variance along flight-induced angles while clamping invariant vehicle identity.
+            </p>
+          </div>
+
+          <div>
+            <span class="font-bold text-white">2. The Proposed Offline Experiment (Your Action Items):</span>
+            <p class="text-slate-400 mt-0.5">
+              We want to test both calibration methods on our synthetic car dataset to contrast their real-world behavior:
+            </p>
+            <ul class="list-disc pl-5 mt-1 space-y-1 text-slate-400 text-[11px]">
+              <li><strong>Step A (Run WC-TPCA):</strong> Run <code class="text-amber-400 font-mono">calibrate_within_class_tpca()</code> on our synthetic car bank. Plot the eigenvalue scree plot to verify that within-vehicle variance drops sharply after 2 components.</li>
+              <li><strong>Step B (Run Tangent PLS):</strong> Run <code class="text-cyan-400 font-mono">calibrate_tangent_pls()</code> using the simulated ground-truth angles <code class="font-mono">[cos &phi;, sin &phi;, &theta;]</code>. Check the cross-validation R<sup>2</sup> score of angle recovery from the tangent space.</li>
+              <li><strong>Step C (Contrast Subspaces):</strong> Compute the subspace angle (Grassmann distance) between the 2D plane discovered by WC-TPCA and the plane discovered by Tangent PLS. Check if WC-TPCA's axes suffer from diagonal mixing.</li>
+              <li><strong>Step D (Runtime Tracking):</strong> Wire the winning sensitivity vectors into <code class="text-emerald-400 font-mono">build_runtime_covariance_R()</code> inside our Riemannian EKF tracker and benchmark track retention across extreme UAS elevation climb profiles.</li>
+            </ul>
+          </div>
+
+          <div>
+            <span class="font-bold text-white">3. Two-Phase Architecture:</span>
+            <div class="grid grid-cols-1 md:grid-cols-2 gap-2 mt-1 text-[11px] font-mono">
+              <div class="p-2 rounded bg-black/40 border border-slate-800">
+                <span class="text-amber-400 font-bold block mb-0.5">Phase 1: Offline Calibration (Run Once)</span>
+                Processes synthetic dataset to output canonical sensitivity vectors <code class="text-white">w_azim</code> and <code class="text-white">w_elev</code>.
+              </div>
+              <div class="p-2 rounded bg-black/40 border border-slate-800">
+                <span class="text-emerald-400 font-bold block mb-0.5">Phase 2: Online Tracker (Runs at 50 Hz)</span>
+                Takes UAS gimbal/flight errors (&sigma;<sub>&phi;</sub>, &sigma;<sub>&theta;</sub>) and projects sensitivity vectors to build dynamic <code class="text-white">R<sub>t</sub></code> in &lt;0.05 ms.
+              </div>
+            </div>
+          </div>
+        </div>
       </div>
 
       <div class="space-y-2">
